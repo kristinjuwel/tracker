@@ -208,7 +208,7 @@ export function CollectionsClient({
       ) : (
         <div className="divide-y rounded-xl border">
           {filtered.map((c) => {
-            const href = `/tracker/collections/${c.id}`;
+            const href = `/tracker/tasks?collection=${c.id}`;
             return (
               <div
                 key={c.id}

@@ -1,55 +1,64 @@
-'use client'
+"use client";
 
-import { useCurrentUserImage } from '@/hooks/use-current-user-image'
-import { useCurrentUserName } from '@/hooks/use-current-user-name'
-import { createClient } from '@/lib/supabase/client'
-import { REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js'
-import { useEffect, useState } from 'react'
+import { useCurrentUserImage } from "@/hooks/use-current-user-image";
+import { useCurrentUserName } from "@/hooks/use-current-user-name";
+import { createClient } from "@/lib/supabase/client";
+import { REALTIME_SUBSCRIBE_STATES } from "@supabase/supabase-js";
+import { useEffect, useState } from "react";
 
-const supabase = createClient()
+const supabase = createClient();
 
 export type RealtimeUser = {
-  id: string
-  name: string
-  image: string
-}
+  id: string;
+  name: string;
+  image: string;
+};
 
 export const useRealtimePresenceRoom = (roomName: string) => {
-  const currentUserImage = useCurrentUserImage()
-  const currentUserName = useCurrentUserName()
+  const currentUserImage = useCurrentUserImage();
+  const currentUserName = useCurrentUserName();
 
-  const [users, setUsers] = useState<Record<string, RealtimeUser>>({})
+  const [users, setUsers] = useState<Record<string, RealtimeUser>>({});
 
   useEffect(() => {
-    const room = supabase.channel(roomName)
+    const room = supabase.channel(roomName);
+
+    interface PresenceMeta {
+      name: string;
+      image: string;
+    }
+
+    type PresenceState = Record<string, PresenceMeta[]>;
 
     room
-      .on('presence', { event: 'sync' }, () => {
-        const newState = room.presenceState<{ image: string; name: string }>()
+      .on("presence", { event: "sync" }, () => {
+        const newState = room.presenceState() as PresenceState;
 
         const newUsers = Object.fromEntries(
-          Object.entries(newState).map(([key, values]) => [
-            key,
-            { name: values[0].name, image: values[0].image },
-          ])
-        ) as Record<string, RealtimeUser>
-        setUsers(newUsers)
+          Object.entries(newState).map(
+            ([key, values]: [string, PresenceMeta[]]) => [
+              key,
+              { name: values[0].name, image: values[0].image },
+            ]
+          )
+        ) as Record<string, RealtimeUser>;
+        setUsers(newUsers);
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: string) => {
         if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
           await room.track({
             name: currentUserName,
             image: currentUserImage,
-          })
+          });
         } else {
-          setUsers({})
+          setUsers({});
         }
-      })
+      });
 
     return () => {
-      room.unsubscribe()
-    }
-  }, [roomName, currentUserName, currentUserImage])
+      room.unsubscribe();
+    };
+  }, [roomName, currentUserName, currentUserImage]);
 
-  return { users }
-}
+  return { users };
+};
