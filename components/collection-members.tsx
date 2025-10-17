@@ -20,6 +20,8 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 type Member = {
   user_id: string;
@@ -112,7 +114,9 @@ export function CollectionMembers({
       .maybeSingle();
 
     if (profErr || !prof?.id) {
-      alert("User not found. The user must sign up first so a profile exists.");
+      toast.error(
+        "User not found. The user must sign up first so a profile exists."
+      );
       setSaving(false);
       return;
     }
@@ -125,7 +129,7 @@ export function CollectionMembers({
     });
 
     if (insErr) {
-      alert(
+      toast.error(
         insErr.message || "Failed to add user. You may not have permission."
       );
     } else {
@@ -133,6 +137,7 @@ export function CollectionMembers({
       setOpen(false);
       setEmail("");
       setRole("viewer");
+      toast.success("Member added");
     }
     setSaving(false);
   };
@@ -150,10 +155,11 @@ export function CollectionMembers({
     });
     if (!res.ok) {
       const msg = await res.text();
-      alert(msg || "Failed to update role");
+      toast.error(msg || "Failed to update role");
       return;
     }
     await load();
+    toast.success("Role updated");
   };
 
   const onRemove = async (userId: string) => {
@@ -167,10 +173,11 @@ export function CollectionMembers({
     );
     if (!res.ok) {
       const msg = await res.text();
-      alert(msg || "Failed to remove member");
+      toast.error(msg || "Failed to remove member");
       return;
     }
     await load();
+    toast.success("Member removed");
   };
 
   return (
@@ -295,7 +302,14 @@ export function CollectionMembers({
               disabled={saving || !email.trim()}
               className="w-full sm:w-auto"
             >
-              {saving ? "Adding..." : "Add"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Adding...
+                </span>
+              ) : (
+                "Add"
+              )}
             </Button>
           </div>
         </DialogContent>

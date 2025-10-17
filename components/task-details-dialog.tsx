@@ -12,6 +12,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
 
 type Status = "pending" | "in_progress" | "blocked" | "completed" | "archived";
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -71,6 +73,14 @@ export function TaskDetailsDialog({
   const [collectionsList, setCollectionsList] = useState<
     Array<{ id: string; title: string }>
   >([]);
+  const [reminders, setReminders] = useState<
+    Array<{ id: string; due_at: string; details: string | null }>
+  >([]);
+  const [newReminderDate, setNewReminderDate] = useState<string>("");
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [newReminderTime, setNewReminderTime] = useState<string>("09:00");
+  const [newReminderDetails, setNewReminderDetails] = useState<string>("");
+  const [remLoading, setRemLoading] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -144,6 +154,86 @@ export function TaskDetailsDialog({
     };
   }, [collections, supabase]);
 
+  // Load reminders for this task
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReminders() {
+      if (!task?.id) return;
+      setRemLoading(true);
+      const url = new URL(
+        "/api/tasks/reminders",
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "http://localhost"
+      );
+      url.searchParams.set("task_id", task.id);
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      const data = (await res.json()) as Array<{
+        id: string;
+        due_at: string;
+        details: string | null;
+      }>;
+      if (!cancelled) setReminders(Array.isArray(data) ? data : []);
+      setRemLoading(false);
+    }
+    void loadReminders();
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id]);
+
+  async function addReminder() {
+    if (!task?.id) return;
+    if (!newReminderDate) {
+      toast.error("Pick a date for the reminder");
+      return;
+    }
+    setRemLoading(true);
+    const due_at = new Date(
+      `${newReminderDate}T${newReminderTime || "09:00"}:00`
+    ).toISOString();
+    const res = await fetch("/api/tasks/reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: task.id,
+        due_at,
+        details: newReminderDetails || null,
+        recipient_user_ids: selectedRecipients.length
+          ? selectedRecipients
+          : undefined,
+      }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j?.error || "Failed to add reminder");
+    } else {
+      const r = await res.json();
+      setReminders((prev) =>
+        [...prev, r].sort((a, b) => a.due_at.localeCompare(b.due_at))
+      );
+      setNewReminderDate("");
+      setNewReminderDetails("");
+      setSelectedRecipients([]);
+      setNewReminderTime("09:00");
+      toast.success("Reminder added");
+    }
+    setRemLoading(false);
+  }
+
+  async function deleteReminder(id: string) {
+    setRemLoading(true);
+    const res = await fetch(`/api/tasks/reminders/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j?.error || "Failed to delete reminder");
+    } else {
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Reminder deleted");
+    }
+    setRemLoading(false);
+  }
+
   function isoToDateInput(v: string) {
     // Return yyyy-mm-dd portion
     const m = /^(\d{4}-\d{2}-\d{2})/.exec(v);
@@ -173,7 +263,7 @@ export function TaskDetailsDialog({
       .eq("id", task.id);
 
     if (updErr) {
-      alert(updErr.message);
+      toast.error(updErr.message || "Failed to update task");
       setSaving(false);
       return;
     }
@@ -229,6 +319,7 @@ export function TaskDetailsDialog({
     };
 
     onSaved?.(updated);
+    toast.success("Task updated");
     setSaving(false);
     onOpenChange(false);
   }
@@ -430,6 +521,227 @@ export function TaskDetailsDialog({
               </div>
             </div>
 
+            {/* Reminders */}
+            <div className="sm:col-span-2 space-y-2 border-t pt-4 mt-2">
+              <Label>Reminders</Label>
+              {remLoading && (
+                <div className="text-xs text-muted-foreground">Loading…</div>
+              )}
+              <div className="flex flex-col gap-2">
+                {reminders.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    No reminders yet.
+                  </div>
+                ) : (
+                  <ul className="space-y-1">
+                    {reminders.map((r) => (
+                      <li
+                        key={r.id}
+                        className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                      >
+                        <div className="flex flex-col">
+                          <span>
+                            {new Date(r.due_at).toLocaleString()}{" "}
+                            {r.details ? `— ${r.details}` : ""}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void deleteReminder(r.id)}
+                          disabled={remLoading}
+                        >
+                          Delete
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="rem-date" className="sr-only">
+                      Date
+                    </Label>
+                    <Input
+                      id="rem-date"
+                      type="date"
+                      value={newReminderDate}
+                      onChange={(e) => setNewReminderDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="rem-time" className="sr-only">
+                      Time
+                    </Label>
+                    <Input
+                      id="rem-time"
+                      type="time"
+                      value={newReminderTime}
+                      onChange={(e) => setNewReminderTime(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="rem-details" className="sr-only">
+                      Details
+                    </Label>
+                    <Input
+                      id="rem-details"
+                      placeholder="Optional note"
+                      value={newReminderDetails}
+                      onChange={(e) => setNewReminderDetails(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => void addReminder()}
+                    disabled={remLoading}
+                  >
+                    Add reminder
+                  </Button>
+                </div>
+                {/* Recipient selection */}
+                <div className="mt-2">
+                  <Label className="mb-1 block text-xs">
+                    Notify specific assignees (optional)
+                  </Label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {assigneeOptions.map((opt) => {
+                      const checked = selectedRecipients.includes(opt.id);
+                      return (
+                        <label
+                          key={opt.id}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              setSelectedRecipients((prev) =>
+                                e.target.checked
+                                  ? [...prev, opt.id]
+                                  : prev.filter((id) => id !== opt.id)
+                              )
+                            }
+                          />
+                          <span className="truncate">{opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    If none selected, all assignees will be emailed. If there
+                    are no assignees with email, the creator is notified.
+                  </p>
+                </div>
+
+                {/* Quick presets */}
+                <div className="mt-2 text-xs">
+                  <Label className="mb-1 block">Quick presets</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!task?.deadline) return;
+                        const d = new Date(task.deadline);
+                        const [hh, mm] = (newReminderTime || "09:00").split(
+                          ":"
+                        );
+                        d.setHours(
+                          parseInt(hh || "9", 10),
+                          parseInt(mm || "0", 10),
+                          0,
+                          0
+                        );
+                        await fetch("/api/tasks/reminders", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            task_id: task.id,
+                            due_at: d.toISOString(),
+                            details: newReminderDetails || null,
+                            recipient_user_ids: selectedRecipients.length
+                              ? selectedRecipients
+                              : undefined,
+                          }),
+                        });
+                        toast.success("Reminder added");
+                      }}
+                    >
+                      On deadline
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!task?.deadline) return;
+                        const d = new Date(task.deadline);
+                        d.setDate(d.getDate() - 2);
+                        const [hh, mm] = (newReminderTime || "09:00").split(
+                          ":"
+                        );
+                        d.setHours(
+                          parseInt(hh || "9", 10),
+                          parseInt(mm || "0", 10),
+                          0,
+                          0
+                        );
+                        await fetch("/api/tasks/reminders", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            task_id: task.id,
+                            due_at: d.toISOString(),
+                            details: newReminderDetails || null,
+                            recipient_user_ids: selectedRecipients.length
+                              ? selectedRecipients
+                              : undefined,
+                          }),
+                        });
+                        toast.success("Reminder added");
+                      }}
+                    >
+                      2 days before
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!task?.deadline) return;
+                        const d = new Date(task.deadline);
+                        d.setDate(d.getDate() - 5);
+                        const [hh, mm] = (newReminderTime || "09:00").split(
+                          ":"
+                        );
+                        d.setHours(
+                          parseInt(hh || "9", 10),
+                          parseInt(mm || "0", 10),
+                          0,
+                          0
+                        );
+                        await fetch("/api/tasks/reminders", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            task_id: task.id,
+                            due_at: d.toISOString(),
+                            details: newReminderDetails || null,
+                            recipient_user_ids: selectedRecipients.length
+                              ? selectedRecipients
+                              : undefined,
+                          }),
+                        });
+                        toast.success("Reminder added");
+                      }}
+                    >
+                      5 days before
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="sm:col-span-2 flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
               <Button
                 variant="outline"
@@ -444,7 +756,14 @@ export function TaskDetailsDialog({
                 disabled={saving}
                 className="w-full sm:w-auto"
               >
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner />
+                    Saving…
+                  </span>
+                ) : (
+                  "Save changes"
+                )}
               </Button>
             </div>
           </div>

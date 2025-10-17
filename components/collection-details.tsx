@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CollectionMembers } from "@/components/collection-members";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 type Props = {
   collectionId: string;
@@ -123,7 +125,7 @@ export function CollectionDetails({
       if (filePreview) URL.revokeObjectURL(filePreview);
       setFilePreview(null);
     } catch (e) {
-      alert((e as Error).message);
+      toast.error((e as Error).message || "Failed to update collection");
     } finally {
       setSaving(false);
     }
@@ -262,11 +264,23 @@ export function CollectionDetails({
               Cancel
             </Button>
             <Button
-              onClick={onSave}
+              onClick={async () => {
+                await onSave();
+                if (!saving) {
+                  toast.success("Collection updated");
+                }
+              }}
               disabled={saving || !title.trim()}
               className="w-full sm:w-auto"
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Saving...
+                </span>
+              ) : (
+                "Save"
+              )}
             </Button>
           </div>
         </DialogContent>

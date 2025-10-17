@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { CollectionCard } from "./collection-card";
 import { List, Grid2x2 } from "lucide-react";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -139,16 +141,17 @@ export function CollectionsClient({
 
       if (error || !data) {
         setCollections((s) => s.filter((c) => c.id !== optimistic.id));
-        alert("Failed to create collection");
+        toast.error("Failed to create collection");
       } else {
         setCollections((s) => [
           data,
           ...s.filter((c) => c.id !== optimistic.id),
         ]);
+        toast.success("Collection created");
       }
     } catch (err) {
       setCollections((s) => s.filter((c) => c.id !== optimistic.id));
-      alert((err as Error).message || "Failed to create collection");
+      toast.error((err as Error).message || "Failed to create collection");
     } finally {
       setSaving(false);
       setOpen(false);
@@ -342,7 +345,14 @@ export function CollectionsClient({
               disabled={saving || !title.trim()}
               className="w-full sm:w-auto"
             >
-              {saving ? "Creating..." : "Create"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Creating...
+                </span>
+              ) : (
+                "Create"
+              )}
             </Button>
           </div>
         </DialogContent>

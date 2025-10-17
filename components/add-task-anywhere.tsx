@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
 
 type Status = "pending" | "in_progress" | "blocked" | "completed" | "archived";
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -112,23 +114,22 @@ export function AddTaskAnywhere({
       .select("id")
       .single();
     if (error) {
-      alert(error.message);
+      toast.error(error.message || "Failed to create task");
       setSaving(false);
       return;
     }
 
     if (inserted?.id && assignees.length) {
-      await supabase
-        .from("user_tasks")
-        .insert(
-          assignees.map((uid) => ({
-            task_id: inserted.id,
-            user_id: uid,
-            role: "assignee" as const,
-          }))
-        );
+      await supabase.from("user_tasks").insert(
+        assignees.map((uid) => ({
+          task_id: inserted.id,
+          user_id: uid,
+          role: "assignee" as const,
+        }))
+      );
     }
 
+    toast.success("Task created");
     setSaving(false);
     setOpen(false);
     resetForm();
@@ -340,13 +341,20 @@ export function AddTaskAnywhere({
               className="w-full sm:w-auto"
             >
               Cancel
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={saving || !name.trim()}
-              className="w-full sm:w-auto"
-            >
-              {saving ? "Creating..." : "Create"}
+              <Button
+                onClick={handleCreate}
+                disabled={saving || !name.trim()}
+                className="w-full sm:w-auto"
+              >
+                {saving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner />
+                    Creating...
+                  </span>
+                ) : (
+                  "Create"
+                )}
+              </Button>
             </Button>
           </div>
         </DialogContent>

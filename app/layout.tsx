@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
 import "./globals.css";
 import { AuthButton } from "@/components/auth-button";
@@ -65,6 +66,8 @@ export default function RootLayout({
               © 2025 Tracker · Built with Next.js & Supabase
             </div>
           </footer>
+          {/* Global toaster for app-wide notifications */}
+          <Toaster richColors closeButton position="top-right" />
         </ThemeProvider>
       </body>
     </html>

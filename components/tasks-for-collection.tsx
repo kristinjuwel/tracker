@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +20,15 @@ import { Badge } from "@/components/ui/badge";
 import { TaskList } from "@/components/task-list";
 import { AvatarStack } from "@/components/avatar-stack";
 import { CurrentUserAvatar } from "@/components/current-user-avatar";
+import RemindModal from "@/components/remind-modal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import TaskDetailsDialog, {
   type TaskDetails,
 } from "@/components/task-details-dialog";
@@ -36,6 +47,7 @@ type Task = {
   deadline?: string | null;
   link?: string | null;
   parent_id?: string | null;
+  col_id?: string | null;
   created_at: string;
 };
 
@@ -88,6 +100,9 @@ export function TasksForCollection({
   const [assigneesCache, setAssigneesCache] = useState<
     Record<string, { id: string; label: string }[]>
   >({});
+  const [nextReminders, setNextReminders] = useState<
+    Record<string, { id: string; due_at: string }>
+  >({});
 
   // Load assignees for ALL tasks on mount/update (for search functionality)
   useEffect(() => {
@@ -137,6 +152,33 @@ export function TasksForCollection({
       setAssigneesCache(Object.fromEntries(Array.from(utByTask.entries())));
     };
     void loadAllAssignees();
+  }, [tasks]);
+
+  // Load next reminders for visible tasks
+  useEffect(() => {
+    const ids = tasks.map((t) => t.id);
+    if (!ids.length) return;
+    let cancelled = false;
+    async function load() {
+      const url = new URL("/api/tasks/reminders/next", window.location.origin);
+      url.searchParams.set("task_ids", ids.join(","));
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      const data = (await res.json()) as Record<
+        string,
+        { id: string; task_id: string; due_at: string }
+      >;
+      if (!cancelled) {
+        const map: Record<string, { id: string; due_at: string }> = {};
+        for (const [taskId, r] of Object.entries(data ?? {})) {
+          map[taskId] = { id: r.id, due_at: r.due_at };
+        }
+        setNextReminders(map);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [tasks]);
 
   // Load members to assign tasks
@@ -271,6 +313,7 @@ export function TasksForCollection({
       deadline: deadline ? new Date(deadline).toISOString() : null,
       link: link || null,
       parent_id: parentId || null,
+      col_id: collectionId,
       created_at: new Date().toISOString(),
     };
     setTasks((s) => [optimistic, ...s]);
@@ -293,13 +336,13 @@ export function TasksForCollection({
         created_by: userId,
       })
       .select(
-        "id, name, description, status, priority, progress, start_date, end_date, deadline, link, parent_id:parent_task_id, created_at"
+        "id, name, description, status, priority, progress, start_date, end_date, deadline, link, parent_id:parent_task_id, col_id, created_at"
       )
       .single();
 
     if (error || !taskRow) {
       setTasks((s) => s.filter((t) => t.id !== optimistic.id));
-      alert(error?.message || "Failed to create task");
+      toast.error(error?.message || "Failed to create task");
       setSaving(false);
       return;
     }
@@ -323,6 +366,7 @@ export function TasksForCollection({
       }));
       const { error: uerr } = await supabase.from("user_tasks").insert(rows);
       if (uerr) {
+        toast.warning("Task created but some assignees were not added");
       }
     }
 
@@ -330,6 +374,7 @@ export function TasksForCollection({
       taskRow as Task,
       ...s.filter((t) => t.id !== optimistic.id),
     ]);
+    toast.success("Task created");
     setSaving(false);
     setOpen(false);
     resetForm();
@@ -395,7 +440,8 @@ export function TasksForCollection({
               parent_id: t.parent_id ?? undefined,
               created_at: t.created_at,
               assignees: assigneesCache[t.id] ?? [],
-              ...(typeof t.col_id === "string" ? { col_id: t.col_id } : {}),
+              // Ensure dialog knows this task belongs to the current collection
+              col_id: t.col_id ?? collectionId,
             };
             setActive(details);
           }}
@@ -424,6 +470,8 @@ export function TasksForCollection({
                   parent_id: t.parent_id ?? undefined,
                   created_at: t.created_at,
                   assignees: assigneesCache[t.id] ?? [],
+                  // Ensure dialog preselects the collection
+                  col_id: t.col_id ?? collectionId,
                 };
                 setActive(details);
               }}
@@ -450,6 +498,12 @@ export function TasksForCollection({
                       <span className="text-muted-foreground">
                         Due {new Date(t.deadline).toLocaleDateString()}
                       </span>
+                    ) : null}
+                    {nextReminders[t.id] ? (
+                      <Badge variant="secondary">
+                        Next reminder{" "}
+                        {new Date(nextReminders[t.id].due_at).toLocaleString()}
+                      </Badge>
                     ) : null}
                     {t.parent_id && parentNameMap[t.parent_id] ? (
                       <span className="text-muted-foreground">
@@ -497,6 +551,17 @@ export function TasksForCollection({
                         </div>
                       );
                     })()}
+                  </div>
+                  {/* Quick reminder presets */}
+                  <div className="mt-2">
+                    <QuickRemindForBoard
+                      task={{
+                        id: t.id,
+                        name: t.name,
+                        deadline: t.deadline ?? null,
+                        assignees: assigneesCache[t.id] ?? [],
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -731,11 +796,129 @@ export function TasksForCollection({
               disabled={saving || !name.trim()}
               className="w-full sm:w-auto"
             >
-              {saving ? "Creating..." : "Create"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Creating...
+                </span>
+              ) : (
+                "Create"
+              )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function QuickRemindForBoard({
+  task,
+}: {
+  task: {
+    id: string;
+    name: string;
+    deadline: string | null;
+    assignees: { id: string; label: string }[];
+  };
+}) {
+  const deadline = task.deadline ? new Date(task.deadline) : null;
+  const [open, setOpen] = useState(false);
+
+  function buildDue(daysBefore: number) {
+    if (!deadline) return null;
+    const d = new Date(deadline);
+    d.setDate(d.getDate() - daysBefore);
+    d.setHours(9, 0, 0, 0);
+    return d.toISOString();
+  }
+
+  async function createReminder(
+    dueISO: string | null,
+    recipientIds?: string[]
+  ) {
+    if (!dueISO) return;
+    const res = await fetch("/api/tasks/reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_id: task.id,
+        due_at: dueISO,
+        details: `Reminder for ${task.name}`,
+        recipient_user_ids:
+          recipientIds && recipientIds.length ? recipientIds : undefined,
+      }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j?.error || "Failed to add reminder");
+    } else {
+      toast.success("Reminder added");
+    }
+  }
+
+  const assignees = task.assignees ?? [];
+  const hasDeadline = !!deadline;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="outline">
+            Remind
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>Quick reminder</DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => void createReminder(buildDue(0))}
+            disabled={!hasDeadline}
+          >
+            On deadline (9:00 AM)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => void createReminder(buildDue(2))}
+            disabled={!hasDeadline}
+          >
+            2 days before (9:00 AM)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => void createReminder(buildDue(5))}
+            disabled={!hasDeadline}
+          >
+            5 days before (9:00 AM)
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {assignees.length ? (
+            <>
+              <DropdownMenuLabel className="text-xs">
+                Only notify…
+              </DropdownMenuLabel>
+              {assignees.map((a) => (
+                <DropdownMenuItem
+                  key={a.id}
+                  onClick={() => void createReminder(buildDue(0), [a.id])}
+                  disabled={!hasDeadline}
+                >
+                  {a.label}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+          <DropdownMenuItem onClick={() => setOpen(true)}>
+            More options…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RemindModal
+        open={open}
+        onOpenChange={setOpen}
+        taskId={task.id}
+        taskName={task.name}
+        deadline={task.deadline}
+        assignees={task.assignees}
+      />
+    </>
   );
 }

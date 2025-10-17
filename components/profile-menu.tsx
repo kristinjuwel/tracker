@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 interface ProfileMenuProps {
   user: { email?: string };
@@ -87,9 +89,10 @@ export function ProfileMenu({ user, firstName, lastName }: ProfileMenuProps) {
 
       setIsEditOpen(false);
       router.refresh();
+      toast.success("Profile updated");
     } catch (error) {
       console.error("Error updating profile:", error);
-      alert("Failed to update profile");
+      toast.error("Failed to update profile");
     } finally {
       setIsSaving(false);
     }
@@ -178,7 +181,14 @@ export function ProfileMenu({ user, firstName, lastName }: ProfileMenuProps) {
                 Cancel
               </Button>
               <Button onClick={handleSaveProfile} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save"}
+                {isSaving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner />
+                    Saving...
+                  </span>
+                ) : (
+                  "Save"
+                )}
               </Button>
             </div>
           </div>
