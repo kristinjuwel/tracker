@@ -240,6 +240,10 @@ export function TasksBrowser({
           }));
           setActive(null);
         }}
+        onDeleted={(id) => {
+          setLocalRows((prev) => prev.filter((t) => t.id !== id));
+          setActive(null);
+        }}
       />
     </div>
   );

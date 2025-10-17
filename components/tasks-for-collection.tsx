@@ -600,6 +600,20 @@ export function TasksForCollection({
           }));
           setActive(null);
         }}
+        onDeleted={(id) => {
+          // Remove from task list and related caches
+          setTasks((prev) => prev.filter((t) => t.id !== id));
+          setAssigneesCache((prev) => {
+            const copy = { ...prev } as Record<
+              string,
+              { id: string; label: string }[]
+            >;
+            delete copy[id];
+            return copy;
+          });
+          setActive(null);
+          toast.success("Task deleted");
+        }}
       />
 
       {/* Add Task dialog */}

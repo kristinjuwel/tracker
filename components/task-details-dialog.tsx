@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
+import ConfirmDialog from "@/components/confirm-dialog";
 
 type Status = "pending" | "in_progress" | "blocked" | "completed" | "archived";
 type Priority = "low" | "medium" | "high" | "urgent";
@@ -42,6 +43,7 @@ export function TaskDetailsDialog({
   parentOptions,
   assigneeOptions,
   onSaved,
+  onDeleted,
   collections,
 }: {
   open: boolean;
@@ -50,6 +52,7 @@ export function TaskDetailsDialog({
   parentOptions: Array<{ id: string; name: string }>;
   assigneeOptions: Array<{ id: string; label: string }>;
   onSaved?: (updated: TaskDetails) => void;
+  onDeleted?: (id: string) => void;
   collections?: Array<{ id: string; title: string }>;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -81,6 +84,7 @@ export function TaskDetailsDialog({
   const [newReminderTime, setNewReminderTime] = useState<string>("09:00");
   const [newReminderDetails, setNewReminderDetails] = useState<string>("");
   const [remLoading, setRemLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -324,452 +328,492 @@ export function TaskDetailsDialog({
     onOpenChange(false);
   }
 
+  async function handleDelete() {
+    if (!task?.id) return;
+    const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j?.error || "Failed to delete task");
+      return;
+    }
+    toast.success("Task deleted");
+    onDeleted?.(task.id);
+    onOpenChange(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-full md:h-5/6 overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Task</DialogTitle>
-          <DialogDescription>
-            Update task details and assignees.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-full md:h-5/6 overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Task</DialogTitle>
+            <DialogDescription>
+              Update task details and assignees.
+            </DialogDescription>
+          </DialogHeader>
 
-        {!task ? null : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {/* Collection selection (optional) */}
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="collection">Collection</Label>
-              <select
-                id="collection"
-                value={colId}
-                onChange={async (e) => {
-                  const v = e.target.value;
-                  setColId(v);
-                  // Clear parent when changing collection
-                  setParentId("");
-                  if (!v) {
-                    setParentOpts([]);
-                    return;
-                  }
-                  const { data } = await supabase
-                    .from("tasks")
-                    .select("id, name")
-                    .eq("col_id", v)
-                    .order("created_at", { ascending: false })
-                    .limit(500);
-                  setParentOpts(
-                    (data ?? []) as Array<{ id: string; name: string }>
-                  );
-                }}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">— None —</option>
-                {collectionsList.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Move this task to a collection or keep it personal.
-              </p>
-            </div>
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="task-name">Name</Label>
-              <Input
-                id="task-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-
-            <div className="sm:col-span-2 space-y-2">
-              <Label htmlFor="task-desc">Description</Label>
-              <textarea
-                id="task-desc"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as Status)}
-              >
-                <option value="pending">Pending</option>
-                <option value="in_progress">In progress</option>
-                <option value="blocked">Blocked</option>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
-              <select
-                id="priority"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as Priority)}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="progress">Progress</Label>
-              <input
-                id="progress"
-                type="range"
-                min={0}
-                max={100}
-                value={progress}
-                onChange={(e) => setProgress(parseInt(e.target.value, 10))}
-                className="w-full"
-              />
-              <div className="text-xs text-muted-foreground">{progress}%</div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="link">Link</Label>
-              <Input
-                id="link"
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="start">Start date</Label>
-              <Input
-                id="start"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end">End date</Label>
-              <Input
-                id="end"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="deadline">Deadline</Label>
-              <Input
-                id="deadline"
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="parent">Parent task</Label>
-              <select
-                id="parent"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={parentId}
-                onChange={(e) => setParentId(e.target.value)}
-                disabled={!colId}
-              >
-                <option value="">— None —</option>
-                {parentOpts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Assignees</Label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {assigneeOptions.map((opt) => {
-                  const checked = assignees.includes(opt.id);
-                  return (
-                    <label
-                      key={opt.id}
-                      className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          setAssignees((prev) =>
-                            e.target.checked
-                              ? [...prev, opt.id]
-                              : prev.filter((id) => id !== opt.id)
-                          );
-                        }}
-                      />
-                      <span className="truncate">{opt.label}</span>
-                    </label>
-                  );
-                })}
+          {!task ? null : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Collection selection (optional) */}
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="collection">Collection</Label>
+                <select
+                  id="collection"
+                  value={colId}
+                  onChange={async (e) => {
+                    const v = e.target.value;
+                    setColId(v);
+                    // Clear parent when changing collection
+                    setParentId("");
+                    if (!v) {
+                      setParentOpts([]);
+                      return;
+                    }
+                    const { data } = await supabase
+                      .from("tasks")
+                      .select("id, name")
+                      .eq("col_id", v)
+                      .order("created_at", { ascending: false })
+                      .limit(500);
+                    setParentOpts(
+                      (data ?? []) as Array<{ id: string; name: string }>
+                    );
+                  }}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">— None —</option>
+                  {collectionsList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Move this task to a collection or keep it personal.
+                </p>
               </div>
-            </div>
+              <div className="sm:col-span-2 space-y-2">
+                <Label htmlFor="task-name">Name</Label>
+                <Input
+                  id="task-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
 
-            {/* Reminders */}
-            <div className="sm:col-span-2 space-y-2 border-t pt-4 mt-2">
-              <Label>Reminders</Label>
-              {remLoading && (
-                <div className="text-xs text-muted-foreground">Loading…</div>
-              )}
-              <div className="flex flex-col gap-2">
-                {reminders.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    No reminders yet.
-                  </div>
-                ) : (
-                  <ul className="space-y-1">
-                    {reminders.map((r) => (
-                      <li
-                        key={r.id}
-                        className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+              <div className="sm:col-span-2 space-y-2">
+                <Label htmlFor="task-desc">Description</Label>
+                <textarea
+                  id="task-desc"
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as Status)}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="completed">Completed</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <select
+                  id="priority"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value as Priority)}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="progress">Progress</Label>
+                <input
+                  id="progress"
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={progress}
+                  onChange={(e) => setProgress(parseInt(e.target.value, 10))}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">{progress}%</div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="link">Link</Label>
+                <Input
+                  id="link"
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="start">Start date</Label>
+                <Input
+                  id="start"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end">End date</Label>
+                <Input
+                  id="end"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deadline">Deadline</Label>
+                <Input
+                  id="deadline"
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="parent">Parent task</Label>
+                <select
+                  id="parent"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={parentId}
+                  onChange={(e) => setParentId(e.target.value)}
+                  disabled={!colId}
+                >
+                  <option value="">— None —</option>
+                  {parentOpts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Assignees</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {assigneeOptions.map((opt) => {
+                    const checked = assignees.includes(opt.id);
+                    return (
+                      <label
+                        key={opt.id}
+                        className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm"
                       >
-                        <div className="flex flex-col">
-                          <span>
-                            {new Date(r.due_at).toLocaleString()}{" "}
-                            {r.details ? `— ${r.details}` : ""}
-                          </span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void deleteReminder(r.id)}
-                          disabled={remLoading}
-                        >
-                          Delete
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="rem-date" className="sr-only">
-                      Date
-                    </Label>
-                    <Input
-                      id="rem-date"
-                      type="date"
-                      value={newReminderDate}
-                      onChange={(e) => setNewReminderDate(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="rem-time" className="sr-only">
-                      Time
-                    </Label>
-                    <Input
-                      id="rem-time"
-                      type="time"
-                      value={newReminderTime}
-                      onChange={(e) => setNewReminderTime(e.target.value)}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="rem-details" className="sr-only">
-                      Details
-                    </Label>
-                    <Input
-                      id="rem-details"
-                      placeholder="Optional note"
-                      value={newReminderDetails}
-                      onChange={(e) => setNewReminderDetails(e.target.value)}
-                    />
-                  </div>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setAssignees((prev) =>
+                              e.target.checked
+                                ? [...prev, opt.id]
+                                : prev.filter((id) => id !== opt.id)
+                            );
+                          }}
+                        />
+                        <span className="truncate">{opt.label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => void addReminder()}
-                    disabled={remLoading}
-                  >
-                    Add reminder
-                  </Button>
-                </div>
-                {/* Recipient selection */}
-                <div className="mt-2">
-                  <Label className="mb-1 block text-xs">
-                    Notify specific assignees (optional)
-                  </Label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {assigneeOptions.map((opt) => {
-                      const checked = selectedRecipients.includes(opt.id);
-                      return (
-                        <label
-                          key={opt.id}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) =>
-                              setSelectedRecipients((prev) =>
-                                e.target.checked
-                                  ? [...prev, opt.id]
-                                  : prev.filter((id) => id !== opt.id)
-                              )
-                            }
-                          />
-                          <span className="truncate">{opt.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    If none selected, all assignees will be emailed. If there
-                    are no assignees with email, the creator is notified.
-                  </p>
-                </div>
+              </div>
 
-                {/* Quick presets */}
-                <div className="mt-2 text-xs">
-                  <Label className="mb-1 block">Quick presets</Label>
-                  <div className="flex flex-wrap gap-2">
+              {/* Reminders */}
+              <div className="sm:col-span-2 space-y-2 border-t pt-4 mt-2">
+                <Label>Reminders</Label>
+                {remLoading && (
+                  <div className="text-xs text-muted-foreground">Loading…</div>
+                )}
+                <div className="flex flex-col gap-2">
+                  {reminders.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      No reminders yet.
+                    </div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {reminders.map((r) => (
+                        <li
+                          key={r.id}
+                          className="flex items-center justify-between rounded border px-3 py-2 text-sm"
+                        >
+                          <div className="flex flex-col">
+                            <span>
+                              {new Date(r.due_at).toLocaleString()}{" "}
+                              {r.details ? `— ${r.details}` : ""}
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void deleteReminder(r.id)}
+                            disabled={remLoading}
+                          >
+                            Delete
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="rem-date" className="sr-only">
+                        Date
+                      </Label>
+                      <Input
+                        id="rem-date"
+                        type="date"
+                        value={newReminderDate}
+                        onChange={(e) => setNewReminderDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="rem-time" className="sr-only">
+                        Time
+                      </Label>
+                      <Input
+                        id="rem-time"
+                        type="time"
+                        value={newReminderTime}
+                        onChange={(e) => setNewReminderTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="rem-details" className="sr-only">
+                        Details
+                      </Label>
+                      <Input
+                        id="rem-details"
+                        placeholder="Optional note"
+                        value={newReminderDetails}
+                        onChange={(e) => setNewReminderDetails(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
                     <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        if (!task?.deadline) return;
-                        const d = new Date(task.deadline);
-                        const [hh, mm] = (newReminderTime || "09:00").split(
-                          ":"
-                        );
-                        d.setHours(
-                          parseInt(hh || "9", 10),
-                          parseInt(mm || "0", 10),
-                          0,
-                          0
-                        );
-                        await fetch("/api/tasks/reminders", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            task_id: task.id,
-                            due_at: d.toISOString(),
-                            details: newReminderDetails || null,
-                            recipient_user_ids: selectedRecipients.length
-                              ? selectedRecipients
-                              : undefined,
-                          }),
-                        });
-                        toast.success("Reminder added");
-                      }}
+                      onClick={() => void addReminder()}
+                      disabled={remLoading}
                     >
-                      On deadline
+                      Add reminder
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        if (!task?.deadline) return;
-                        const d = new Date(task.deadline);
-                        d.setDate(d.getDate() - 2);
-                        const [hh, mm] = (newReminderTime || "09:00").split(
-                          ":"
+                  </div>
+                  {/* Recipient selection */}
+                  <div className="mt-2">
+                    <Label className="mb-1 block text-xs">
+                      Notify specific assignees (optional)
+                    </Label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {assigneeOptions.map((opt) => {
+                        const checked = selectedRecipients.includes(opt.id);
+                        return (
+                          <label
+                            key={opt.id}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) =>
+                                setSelectedRecipients((prev) =>
+                                  e.target.checked
+                                    ? [...prev, opt.id]
+                                    : prev.filter((id) => id !== opt.id)
+                                )
+                              }
+                            />
+                            <span className="truncate">{opt.label}</span>
+                          </label>
                         );
-                        d.setHours(
-                          parseInt(hh || "9", 10),
-                          parseInt(mm || "0", 10),
-                          0,
-                          0
-                        );
-                        await fetch("/api/tasks/reminders", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            task_id: task.id,
-                            due_at: d.toISOString(),
-                            details: newReminderDetails || null,
-                            recipient_user_ids: selectedRecipients.length
-                              ? selectedRecipients
-                              : undefined,
-                          }),
-                        });
-                        toast.success("Reminder added");
-                      }}
-                    >
-                      2 days before
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        if (!task?.deadline) return;
-                        const d = new Date(task.deadline);
-                        d.setDate(d.getDate() - 5);
-                        const [hh, mm] = (newReminderTime || "09:00").split(
-                          ":"
-                        );
-                        d.setHours(
-                          parseInt(hh || "9", 10),
-                          parseInt(mm || "0", 10),
-                          0,
-                          0
-                        );
-                        await fetch("/api/tasks/reminders", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            task_id: task.id,
-                            due_at: d.toISOString(),
-                            details: newReminderDetails || null,
-                            recipient_user_ids: selectedRecipients.length
-                              ? selectedRecipients
-                              : undefined,
-                          }),
-                        });
-                        toast.success("Reminder added");
-                      }}
-                    >
-                      5 days before
-                    </Button>
+                      })}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      If none selected, all assignees will be emailed. If there
+                      are no assignees with email, the creator is notified.
+                    </p>
+                  </div>
+
+                  {/* Quick presets */}
+                  <div className="mt-2 text-xs">
+                    <Label className="mb-1 block">Quick presets</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!task?.deadline) return;
+                          const d = new Date(task.deadline);
+                          const [hh, mm] = (newReminderTime || "09:00").split(
+                            ":"
+                          );
+                          d.setHours(
+                            parseInt(hh || "9", 10),
+                            parseInt(mm || "0", 10),
+                            0,
+                            0
+                          );
+                          await fetch("/api/tasks/reminders", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              task_id: task.id,
+                              due_at: d.toISOString(),
+                              details: newReminderDetails || null,
+                              recipient_user_ids: selectedRecipients.length
+                                ? selectedRecipients
+                                : undefined,
+                            }),
+                          });
+                          toast.success("Reminder added");
+                        }}
+                      >
+                        On deadline
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!task?.deadline) return;
+                          const d = new Date(task.deadline);
+                          d.setDate(d.getDate() - 2);
+                          const [hh, mm] = (newReminderTime || "09:00").split(
+                            ":"
+                          );
+                          d.setHours(
+                            parseInt(hh || "9", 10),
+                            parseInt(mm || "0", 10),
+                            0,
+                            0
+                          );
+                          await fetch("/api/tasks/reminders", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              task_id: task.id,
+                              due_at: d.toISOString(),
+                              details: newReminderDetails || null,
+                              recipient_user_ids: selectedRecipients.length
+                                ? selectedRecipients
+                                : undefined,
+                            }),
+                          });
+                          toast.success("Reminder added");
+                        }}
+                      >
+                        2 days before
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          if (!task?.deadline) return;
+                          const d = new Date(task.deadline);
+                          d.setDate(d.getDate() - 5);
+                          const [hh, mm] = (newReminderTime || "09:00").split(
+                            ":"
+                          );
+                          d.setHours(
+                            parseInt(hh || "9", 10),
+                            parseInt(mm || "0", 10),
+                            0,
+                            0
+                          );
+                          await fetch("/api/tasks/reminders", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              task_id: task.id,
+                              due_at: d.toISOString(),
+                              details: newReminderDetails || null,
+                              recipient_user_ids: selectedRecipients.length
+                                ? selectedRecipients
+                                : undefined,
+                            }),
+                          });
+                          toast.success("Reminder added");
+                        }}
+                      >
+                        5 days before
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="sm:col-span-2 flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={saving}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full sm:w-auto"
-              >
-                {saving ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Spinner />
-                    Saving…
-                  </span>
-                ) : (
-                  "Save changes"
-                )}
-              </Button>
+              <div className="sm:col-span-2 flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={saving}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="w-full sm:w-auto"
+                >
+                  {saving ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner />
+                      Saving…
+                    </span>
+                  ) : (
+                    "Save changes"
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+
+          {/* Footer actions */}
+          {task ? (
+            <div className="mt-4 flex items-center justify-between">
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setConfirmOpen(true)}
+              >
+                Delete task
+              </Button>
+              <div />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm delete */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete task?"
+        description="This will permanently delete this task and its related data (like assignees and reminders). This action cannot be undone."
+        confirmLabel="Delete task"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
+    </>
   );
 }
 

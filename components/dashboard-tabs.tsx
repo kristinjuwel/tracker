@@ -7,8 +7,6 @@ import { cn } from "@/lib/utils"; // or your own cx helper
 const links = [
   { href: "/collections", label: "Collections" }, // this resolves to /(dashboard)/page.tsx
   { href: "/tasks", label: "Tasks" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/settings", label: "Settings" },
 ];
 
 export function DashboardTabs() {

@@ -17,6 +17,8 @@ import {
 import { CollectionMembers } from "@/components/collection-members";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
+import ConfirmDialog from "@/components/confirm-dialog";
+import { useRouter } from "next/navigation";
 
 type Props = {
   collectionId: string;
@@ -45,6 +47,7 @@ export function CollectionDetails({
   initial,
 }: Props) {
   const supabase = createClient();
+  const router = useRouter();
 
   const [title, setTitle] = useState(initial.title);
   const [description, setDescription] = useState(initial.description ?? "");
@@ -56,6 +59,7 @@ export function CollectionDetails({
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const previewToShow = useMemo(() => {
     if (filePreview) return filePreview;
@@ -131,6 +135,23 @@ export function CollectionDetails({
     }
   };
 
+  const onDelete = async () => {
+    try {
+      const res = await fetch(`/api/collections/${collectionId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to delete collection");
+      }
+      toast.success("Collection deleted");
+      router.push("/");
+      router.refresh();
+    } catch (e) {
+      toast.error((e as Error).message || "Failed to delete collection");
+    }
+  };
+
   return (
     <Card className="p-4">
       <div className="flex items-start gap-4">
@@ -171,9 +192,18 @@ export function CollectionDetails({
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {canEdit ? (
-                <Button size="sm" onClick={() => setOpen(true)}>
-                  Edit
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => setOpen(true)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setConfirmOpen(true)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               ) : null}
               <Button
                 size="sm"
@@ -302,6 +332,17 @@ export function CollectionDetails({
           />
         </DialogContent>
       </Dialog>
+
+      {/* Confirm delete */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Delete collection?"
+        description="This will permanently delete this collection. Tasks may be orphaned or removed depending on database constraints. This action cannot be undone."
+        confirmLabel="Delete collection"
+        variant="destructive"
+        onConfirm={onDelete}
+      />
     </Card>
   );
 }
