@@ -4,6 +4,22 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
+// Format a date string as dd/mm/yyyy. Handles ISO strings safely.
+function formatDateDMY(input?: string | null): string {
+  if (!input) return "—";
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(input);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${d}/${m}/${y}`;
+  }
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return "—";
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 export type TaskListRow = {
   id: string;
   name: string;
@@ -106,10 +122,10 @@ export function TaskList({
                 {typeof t.progress === "number" ? `${t.progress}%` : "—"}
               </td>
               <td className="px-3 py-2 text-center text-muted-foreground">
-                {t.deadline ? new Date(t.deadline).toLocaleDateString() : "—"}
+                {t.deadline ? formatDateDMY(t.deadline) : "—"}
               </td>
               <td className="px-3 py-2 text-right text-muted-foreground">
-                {new Date(t.created_at).toLocaleDateString()}
+                {formatDateDMY(t.created_at)}
               </td>
             </tr>
           ))}

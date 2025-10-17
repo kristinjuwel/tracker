@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CollectionMembers } from "@/components/collection-members";
+import { TaskList } from "@/components/task-list";
 
 const supabase = createClient();
 
@@ -24,15 +25,15 @@ type Task = {
   description?: string | null;
   status: "pending" | "in_progress" | "blocked" | "completed" | "archived";
   priority: "low" | "medium" | "high" | "urgent";
-  progress?: number;
+  progress?: number | null;
   start_date?: string | null;
   end_date?: string | null;
   deadline?: string | null;
   link?: string | null;
+  parent_id?: string | null;
   created_at: string;
 };
 
-// Local type for selectable assignees in this component
 type AssigneeOption = {
   user_id: string;
   label: string;
@@ -42,34 +43,97 @@ export function TasksForCollection({
   initialTasks,
   collectionId,
   userId,
-  collectionTitle,
+  initialParentNameMap,
 }: {
   initialTasks: Task[];
   collectionId: string;
   userId: string;
-  collectionTitle: string;
+  initialParentNameMap?: Record<string, { id: string; name: string }>;
 }) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [q, setQ] = useState("");
+  const qs = useSearchParams();
+  const q = (qs.get("q") ?? "").trim();
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"board" | "list">("list"); // default to list
 
-  // Task fields
+  // Task form fields
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState<Task["status"]>("pending");
   const [priority, setPriority] = useState<Task["priority"]>("medium");
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState<number>(0);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [deadline, setDeadline] = useState<string>("");
   const [link, setLink] = useState<string>("");
+  const [parentId, setParentId] = useState<string>("");
 
-  // Members & assignees (options for assignment)
+  // Members & assignees
   const [members, setMembers] = useState<AssigneeOption[]>([]);
   const [assignees, setAssignees] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Load collection members (to assign tasks)
+  // Map for parent task names (used in list view)
+  const [parentNameMap, setParentNameMap] = useState<
+    Record<string, { id: string; name: string }>
+  >(initialParentNameMap ?? {});
+
+  // Cache assignees for all tasks (used for search and display)
+  const [assigneesCache, setAssigneesCache] = useState<
+    Record<string, { id: string; label: string }[]>
+  >({});
+
+  // Load assignees for ALL tasks on mount/update (for search functionality)
+  useEffect(() => {
+    const loadAllAssignees = async () => {
+      if (!tasks.length) return;
+      const ids = tasks.map((t) => t.id);
+      type UserTaskRow = { task_id: string; user_id: string };
+      const { data: utRaw = [] } = await supabase
+        .from("user_tasks")
+        .select("task_id, user_id")
+        .in("task_id", ids);
+
+      const ut: UserTaskRow[] = (utRaw ?? []) as UserTaskRow[];
+      const uniqueUserIds = Array.from(new Set(ut.map((r) => r.user_id)));
+      const labelMap: Record<string, string> = {};
+
+      if (uniqueUserIds.length) {
+        type ProfileRow = {
+          id: string;
+          first_name: string | null;
+          last_name: string | null;
+          email: string | null;
+        };
+        const res = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name, email")
+          .in("id", uniqueUserIds);
+        for (const p of (res.data ?? []) as ProfileRow[]) {
+          const label =
+            p.first_name || p.last_name
+              ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()
+              : p.email ?? p.id;
+          labelMap[p.id] = label;
+        }
+      }
+
+      const utByTask = new Map<string, { id: string; label: string }[]>();
+      ut.forEach((row) => {
+        const arr = utByTask.get(row.task_id) ?? [];
+        arr.push({
+          id: row.user_id,
+          label: labelMap[row.user_id] ?? row.user_id,
+        });
+        utByTask.set(row.task_id, arr);
+      });
+
+      setAssigneesCache(Object.fromEntries(Array.from(utByTask.entries())));
+    };
+    void loadAllAssignees();
+  }, [tasks]);
+
+  // Load members to assign tasks
   useEffect(() => {
     const loadMembers = async () => {
       const { data: uc = [] } = await supabase
@@ -107,16 +171,65 @@ export function TasksForCollection({
     void loadMembers();
   }, [collectionId]);
 
+  // Option list of potential parents (only tasks in same collection)
+  const parentOptions = useMemo(() => {
+    return tasks.map((t) => ({ id: t.id, name: t.name }));
+  }, [tasks]);
+
   const filtered = useMemo(() => {
     if (!q) return tasks;
-    const s = q.toLowerCase();
-    return tasks.filter(
-      (t) =>
-        t.name.toLowerCase().includes(s) ||
-        (t.description ?? "").toLowerCase().includes(s)
-    );
-  }, [q, tasks]);
+    const term = q.toLowerCase();
 
+    // Date formatter mirroring display (dd/mm/yyyy)
+    const toDMY = (input?: string | null) => {
+      if (!input) return "";
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+      const d = new Date(input);
+      if (isNaN(d.getTime())) return "";
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    const norm = (v?: string | null) => (v ?? "").toString().toLowerCase();
+
+    return tasks.filter((t) => {
+      const parentName =
+        t.parent_id && initialParentNameMap?.[t.parent_id]
+          ? initialParentNameMap[t.parent_id].name
+          : "";
+      const assigneeNames = (assigneesCache[t.id] ?? [])
+        .map((a) => a.label)
+        .join(" ");
+      const statusReadable = t.status.replaceAll("_", " ");
+      const progressStr =
+        typeof t.progress === "number" ? `${t.progress}%` : "";
+      const deadlineStr = toDMY(t.deadline);
+      const createdStr = toDMY(t.created_at);
+      const startStr = toDMY(t.start_date);
+      const endStr = toDMY(t.end_date);
+
+      const haystack = [
+        norm(t.name),
+        norm(t.description),
+        norm(t.link),
+        norm(parentName),
+        norm(assigneeNames),
+        norm(t.priority),
+        norm(t.status),
+        norm(statusReadable),
+        norm(progressStr),
+        norm(deadlineStr),
+        norm(createdStr),
+        norm(startStr),
+        norm(endStr),
+      ].join(" ");
+
+      return haystack.includes(term);
+    });
+  }, [q, tasks, initialParentNameMap, assigneesCache]);
   const resetForm = () => {
     setName("");
     setDesc("");
@@ -128,6 +241,7 @@ export function TasksForCollection({
     setDeadline("");
     setLink("");
     setAssignees([]);
+    setParentId("");
   };
 
   const handleCreateTask = async () => {
@@ -145,11 +259,12 @@ export function TasksForCollection({
       end_date: endDate ? new Date(endDate).toISOString() : null,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       link: link || null,
+      parent_id: parentId || null,
       created_at: new Date().toISOString(),
     };
     setTasks((s) => [optimistic, ...s]);
 
-    // Insert task (RLS: creator must be owner/editor; created_by = auth.uid())
+    // Insert task (RLS assumes created_by must be auth.uid())
     const { data: taskRow, error } = await supabase
       .from("tasks")
       .insert({
@@ -163,10 +278,11 @@ export function TasksForCollection({
         end_date: optimistic.end_date,
         deadline: optimistic.deadline,
         link: optimistic.link,
+        parent_task_id: optimistic.parent_id,
         created_by: userId,
       })
       .select(
-        "id, name, description, status, priority, progress, start_date, end_date, deadline, link, created_at"
+        "id, name, description, status, priority, progress, start_date, end_date, deadline, link, parent_id:parent_task_id, created_at"
       )
       .single();
 
@@ -177,7 +293,17 @@ export function TasksForCollection({
       return;
     }
 
-    // Insert assignees (user_tasks)
+    // If parent chosen, ensure parent name map has it
+    if (taskRow.parent_id && !parentNameMap[taskRow.parent_id]) {
+      const parent = tasks.find((t) => t.id === taskRow.parent_id);
+      if (parent)
+        setParentNameMap((m) => ({
+          ...m,
+          [parent.id]: { id: parent.id, name: parent.name },
+        }));
+    }
+
+    // Insert assignees
     if (assignees.length) {
       const rows = assignees.map((uid) => ({
         task_id: taskRow.id,
@@ -186,38 +312,62 @@ export function TasksForCollection({
       }));
       const { error: uerr } = await supabase.from("user_tasks").insert(rows);
       if (uerr) {
-        // Non-fatal; task exists. You can show a toast.
-        // console.warn(uerr.message);
       }
     }
 
-    // Replace optimistic row with real one
-    setTasks((s) => [taskRow, ...s.filter((t) => t.id !== optimistic.id)]);
+    setTasks((s) => [
+      taskRow as Task,
+      ...s.filter((t) => t.id !== optimistic.id),
+    ]);
     setSaving(false);
     setOpen(false);
     resetForm();
   };
 
+  // Prepare data for list view with assignees aggregated from cache
+  const listRows = useMemo(() => {
+    return filtered.map((t) => ({
+      ...t,
+      assignees: assigneesCache[t.id] ?? [],
+    }));
+  }, [filtered, assigneesCache]);
+
+  const composedListRows = listRows;
+
   return (
     <div className="space-y-6">
-      {/* Members manager */}
-      <CollectionMembers collectionId={collectionId} currentUserId={userId} />
-
-      {/* Toolbar */}
+      {/* Toolbar: view toggle (search handled by page-level Filters) */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={`Search tasks in “${collectionTitle}”…`}
-          className="w-full sm:w-96"
-        />
+        <div className="flex w-full items-center gap-2">
+          <div className="hidden sm:flex rounded border p-1 text-xs">
+            <button
+              className={`rounded px-2 py-1 ${
+                view === "list" ? "bg-muted" : ""
+              }`}
+              onClick={() => setView("list")}
+            >
+              List
+            </button>
+            <button
+              className={`rounded px-2 py-1 ${
+                view === "board" ? "bg-muted" : ""
+              }`}
+              onClick={() => setView("board")}
+            >
+              Board
+            </button>
+          </div>
+        </div>
         <Button className="w-full sm:w-auto" onClick={() => setOpen(true)}>
           Add Task
         </Button>
       </div>
 
-      {/* List */}
-      {filtered.length === 0 ? (
+      {/* View switcher */}
+      {view === "list" ? (
+        <TaskList rows={composedListRows} parentNameMap={parentNameMap} />
+      ) : // Simple board-style cards (existing minimal version)
+      filtered.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No tasks yet.</Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
@@ -236,7 +386,7 @@ export function TasksForCollection({
                       {t.status.replaceAll("_", " ")}
                     </Badge>
                     <Badge className="capitalize">{t.priority}</Badge>
-                    {t.progress !== undefined ? (
+                    {typeof t.progress === "number" ? (
                       <span className="text-muted-foreground">
                         Progress: {t.progress}%
                       </span>
@@ -244,6 +394,11 @@ export function TasksForCollection({
                     {t.deadline ? (
                       <span className="text-muted-foreground">
                         Due {new Date(t.deadline).toLocaleDateString()}
+                      </span>
+                    ) : null}
+                    {t.parent_id && parentNameMap[t.parent_id] ? (
+                      <span className="text-muted-foreground">
+                        Parent: {parentNameMap[t.parent_id].name}
                       </span>
                     ) : null}
                   </div>
@@ -392,12 +547,30 @@ export function TasksForCollection({
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="parent">Parent task (optional)</Label>
+              <select
+                id="parent"
+                value={parentId}
+                onChange={(e) => setParentId(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">— None —</option>
+                {parentOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="sm:col-span-2 space-y-2">
               <Label>Assignees</Label>
               <div className="grid gap-2 sm:grid-cols-2">
                 {members.length === 0 ? (
                   <div className="text-xs text-muted-foreground">
-                    No members to assign. Add members above.
+                    No members to assign. Use the Members button to invite
+                    people.
                   </div>
                 ) : (
                   members.map((m) => {

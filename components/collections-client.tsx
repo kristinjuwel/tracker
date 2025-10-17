@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { CollectionCard } from "./collection-card";
 import { List, Grid2x2 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 type Collection = {
   id: string;
@@ -208,11 +209,12 @@ export function CollectionsClient({
       ) : (
         <div className="divide-y rounded-xl border">
           {filtered.map((c) => {
-            const href = `/tracker/tasks?collection=${c.id}`;
+            const href = `/tasks?collection=${c.id}`;
             return (
-              <div
+              <Link
                 key={c.id}
-                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
+                href={href}
+                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-xl hover:bg-muted/40 transition"
               >
                 {/* left */}
                 <div className="flex items-center gap-2">
@@ -232,12 +234,9 @@ export function CollectionsClient({
                     )
                   ) : null}
                   <div>
-                    <a
-                      href={href}
-                      className="font-semibold break-words hover:underline"
-                    >
+                    <span className="font-semibold break-words hover:underline">
                       {c.title}
-                    </a>
+                    </span>
                     {c.description ? (
                       <p className="mt-1 text-sm text-muted-foreground break-words">
                         {c.description}
@@ -249,7 +248,7 @@ export function CollectionsClient({
                 <div className="text-xs text-muted-foreground sm:text-right">
                   {new Date(c.created_at).toLocaleDateString()}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

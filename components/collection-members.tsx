@@ -137,6 +137,42 @@ export function CollectionMembers({
     setSaving(false);
   };
 
+  const onChangeRole = async (userId: string, nextRole: Member["role"]) => {
+    // Upsert via API route preserves RLS on server side
+    const res = await fetch(`/api/collections/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        col_id: collectionId,
+        user_id: userId,
+        role: nextRole,
+      }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      alert(msg || "Failed to update role");
+      return;
+    }
+    await load();
+  };
+
+  const onRemove = async (userId: string) => {
+    const confirm = window.confirm("Remove this member from the collection?");
+    if (!confirm) return;
+    const res = await fetch(
+      `/api/collections/members/${userId}?col_id=${collectionId}`,
+      {
+        method: "DELETE",
+      }
+    );
+    if (!res.ok) {
+      const msg = await res.text();
+      alert(msg || "Failed to remove member");
+      return;
+    }
+    await load();
+  };
+
   return (
     <Card className="p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -171,9 +207,38 @@ export function CollectionMembers({
                   {m.email}
                 </div>
               </div>
-              <div className="text-xs capitalize text-muted-foreground">
-                {m.role}
-              </div>
+              {canManage ? (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="text-xs rounded border bg-background px-2 py-1 capitalize"
+                    value={m.role}
+                    onChange={(e) =>
+                      onChangeRole(m.user_id, e.target.value as Member["role"])
+                    }
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                    <option value="owner">Owner</option>
+                  </select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRemove(m.user_id)}
+                    disabled={m.user_id === currentUserId}
+                    title={
+                      m.user_id === currentUserId
+                        ? "You cannot remove yourself"
+                        : "Remove member"
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-xs capitalize text-muted-foreground">
+                  {m.role}
+                </div>
+              )}
             </div>
           ))
         )}
