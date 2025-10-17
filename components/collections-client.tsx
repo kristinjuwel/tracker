@@ -256,7 +256,7 @@ export function CollectionsClient({
 
       {/* Add dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-60 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Collection</DialogTitle>
             <DialogDescription>

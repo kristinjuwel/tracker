@@ -16,6 +16,11 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskList } from "@/components/task-list";
+import { AvatarStack } from "@/components/avatar-stack";
+import { CurrentUserAvatar } from "@/components/current-user-avatar";
+import TaskDetailsDialog, {
+  type TaskDetails,
+} from "@/components/task-details-dialog";
 
 const supabase = createClient();
 
@@ -72,6 +77,7 @@ export function TasksForCollection({
   const [members, setMembers] = useState<AssigneeOption[]>([]);
   const [assignees, setAssignees] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [active, setActive] = useState<TaskDetails | null>(null);
 
   // Map for parent task names (used in list view)
   const [parentNameMap, setParentNameMap] = useState<
@@ -175,6 +181,11 @@ export function TasksForCollection({
   const parentOptions = useMemo(() => {
     return tasks.map((t) => ({ id: t.id, name: t.name }));
   }, [tasks]);
+
+  const assigneeOptionsForDialog = useMemo(
+    () => members.map((m) => ({ id: m.user_id, label: m.label })),
+    [members]
+  );
 
   const filtered = useMemo(() => {
     if (!q) return tasks;
@@ -365,14 +376,33 @@ export function TasksForCollection({
 
       {/* View switcher */}
       {view === "list" ? (
-        <TaskList rows={composedListRows} parentNameMap={parentNameMap} />
+        <TaskList
+          rows={composedListRows}
+          parentNameMap={parentNameMap}
+          currentUserId={userId}
+          onRowClick={(t) =>
+            setActive({
+              ...t,
+              assignees: assigneesCache[t.id] ?? [],
+            })
+          }
+        />
       ) : // Simple board-style cards (existing minimal version)
       filtered.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No tasks yet.</Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {filtered.map((t) => (
-            <Card key={t.id} className="p-4">
+            <Card
+              key={t.id}
+              className="p-4 cursor-pointer"
+              onClick={() =>
+                setActive({
+                  ...t,
+                  assignees: assigneesCache[t.id] ?? [],
+                })
+              }
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="truncate font-medium">{t.name}</div>
@@ -402,6 +432,8 @@ export function TasksForCollection({
                       </span>
                     ) : null}
                   </div>
+                  {/* Assignees avatars */}
+
                   {t.link ? (
                     <a
                       href={t.link}
@@ -415,12 +447,70 @@ export function TasksForCollection({
                 </div>
                 <div className="shrink-0 text-right text-xs text-muted-foreground">
                   {new Date(t.created_at).toLocaleDateString()}
+                  <div className="mt-2 items-center">
+                    {(() => {
+                      const assignees = assigneesCache[t.id] ?? [];
+                      if (!assignees.length)
+                        return (
+                          <span className="text-xs text-muted-foreground">
+                            —
+                          </span>
+                        );
+                      const currentIncluded = assignees.some(
+                        (a) => a.id === userId
+                      );
+                      const others = assignees.filter((a) => a.id !== userId);
+                      return (
+                        <div className="flex items-center gap-2">
+                          {currentIncluded ? (
+                            <CurrentUserAvatar className="h-6 w-6" />
+                          ) : null}
+                          <AvatarStack
+                            avatars={others.map((a) => ({ name: a.label }))}
+                            maxAvatarsAmount={4}
+                          />
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             </Card>
           ))}
         </div>
       )}
+
+      <TaskDetailsDialog
+        open={!!active}
+        onOpenChange={(v) => {
+          if (!v) setActive(null);
+        }}
+        task={active}
+        parentOptions={parentOptions}
+        assigneeOptions={assigneeOptionsForDialog}
+        onSaved={(updated) => {
+          // Update tasks list
+          setTasks((prev) =>
+            prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
+          );
+          // Update parent name map if needed
+          if (updated.parent_id && !parentNameMap[updated.parent_id]) {
+            const parent = tasks.find((t) => t.id === updated.parent_id);
+            if (parent) {
+              setParentNameMap((m) => ({
+                ...m,
+                [parent.id]: { id: parent.id, name: parent.name },
+              }));
+            }
+          }
+          // Update cached assignees for this task
+          setAssigneesCache((prev) => ({
+            ...prev,
+            [updated.id]: updated.assignees ?? [],
+          }));
+          setActive(null);
+        }}
+      />
 
       {/* Add Task dialog */}
       <Dialog
@@ -430,7 +520,7 @@ export function TasksForCollection({
           if (!v) resetForm();
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-60 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Task</DialogTitle>
             <DialogDescription>

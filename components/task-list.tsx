@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { AvatarStack } from "@/components/avatar-stack";
+import { CurrentUserAvatar } from "@/components/current-user-avatar";
 
 // Format a date string as dd/mm/yyyy. Handles ISO strings safely.
 function formatDateDMY(input?: string | null): string {
@@ -39,9 +41,13 @@ export type TaskListRow = {
 export function TaskList({
   rows,
   parentNameMap,
+  currentUserId,
+  onRowClick,
 }: {
   rows: TaskListRow[];
   parentNameMap: Record<string, { id: string; name: string }>;
+  currentUserId?: string;
+  onRowClick?: (task: TaskListRow) => void;
 }) {
   const items = useMemo(() => rows, [rows]);
 
@@ -68,7 +74,13 @@ export function TaskList({
         </thead>
         <tbody>
           {items.map((t) => (
-            <tr key={t.id} className="border-t">
+            <tr
+              key={t.id}
+              className={`border-t ${
+                onRowClick ? "cursor-pointer hover:bg-muted/40" : ""
+              }`}
+              onClick={() => onRowClick?.(t)}
+            >
               <td className="px-3 py-2 align-top">
                 <div className="font-medium truncate max-w-[320px]">
                   {t.name}
@@ -96,15 +108,18 @@ export function TaskList({
               </td>
               <td className="px-3 py-2 align-top">
                 {t.assignees && t.assignees.length ? (
-                  <div className="flex flex-wrap gap-1">
-                    {t.assignees.map((a) => (
-                      <span
-                        key={a.id}
-                        className="rounded bg-muted px-2 py-0.5 text-xs"
-                      >
-                        {a.label}
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    {/* Current user avatar shown first if part of assignees */}
+                    {currentUserId &&
+                    t.assignees.some((a) => a.id === currentUserId) ? (
+                      <CurrentUserAvatar className="h-6 w-6" />
+                    ) : null}
+                    <AvatarStack
+                      avatars={t.assignees
+                        .filter((a) => a.id !== currentUserId)
+                        .map((a) => ({ name: a.label }))}
+                      maxAvatarsAmount={4}
+                    />
                   </div>
                 ) : (
                   <span className="text-muted-foreground">—</span>

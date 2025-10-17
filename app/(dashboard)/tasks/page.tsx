@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Filters } from "@/components/tasks-filters";
-import { TaskList, type TaskListRow } from "@/components/task-list";
+import type { TaskListRow } from "@/components/task-list";
+import { TasksBrowser } from "@/components/tasks-browser";
 
 export type SearchParams = {
   q?: string;
@@ -293,7 +294,12 @@ export default async function AllTasksPage({
       {filteredRows.length === 0 ? (
         <EmptyState message="No tasks match your filters." />
       ) : (
-        <TaskList rows={filteredRows} parentNameMap={parentNameMap} />
+        <TasksBrowser
+          rows={filteredRows}
+          parentNameMap={parentNameMap}
+          currentUserId={user.id}
+          assigneeOptions={assigneeOptions}
+        />
       )}
     </div>
   );
