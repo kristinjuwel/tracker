@@ -187,7 +187,7 @@ export function CollectionDetails({
 
       {/* Edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-60 overflow-y-auto">
+        <DialogContent className="max-h-full md:h-5/6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Collection</DialogTitle>
             <DialogDescription>
@@ -274,7 +274,7 @@ export function CollectionDetails({
 
       {/* Members dialog */}
       <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
-        <DialogContent className="max-w-2xl max-h-90 overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-full md:h-5/6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Collection Members</DialogTitle>
             <DialogDescription>

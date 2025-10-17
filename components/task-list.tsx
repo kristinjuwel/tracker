@@ -35,6 +35,7 @@ export type TaskListRow = {
   link?: string | null;
   created_at: string;
   parent_id?: string | null;
+  col_id?: string | null;
   assignees?: { id: string; label: string }[];
 };
 

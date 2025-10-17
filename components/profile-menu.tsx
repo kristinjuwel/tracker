@@ -129,7 +129,7 @@ export function ProfileMenu({ user, firstName, lastName }: ProfileMenuProps) {
       </DropdownMenu>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-h-60 overflow-y-auto">
+        <DialogContent className="max-h-full md:h-2/3 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
             <DialogDescription>

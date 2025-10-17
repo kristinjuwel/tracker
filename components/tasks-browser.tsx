@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskList, type TaskListRow } from "@/components/task-list";
@@ -9,7 +9,6 @@ import { CurrentUserAvatar } from "@/components/current-user-avatar";
 import TaskDetailsDialog, {
   type TaskDetails,
 } from "@/components/task-details-dialog";
-import { useMemo } from "react";
 
 export function TasksBrowser({
   rows,
@@ -27,13 +26,25 @@ export function TasksBrowser({
   const [view, setView] = useState<"list" | "board">("list");
   const [active, setActive] = useState<TaskDetails | null>(null);
 
+  // Keep a local copy so we can optimistically reflect edits without a full refresh
+  const [localRows, setLocalRows] = useState<TaskListRow[]>(rows);
+  const [localParentNameMap, setLocalParentNameMap] = useState(parentNameMap);
+
+  // Sync local state when props change (e.g., filters/navigation)
+  useEffect(() => {
+    setLocalRows(rows);
+  }, [rows]);
+  useEffect(() => {
+    setLocalParentNameMap(parentNameMap);
+  }, [parentNameMap]);
+
   const composedParents = useMemo(() => {
     // Fallback parent options from parentNameMap if not provided
     if (parentOptions.length) return parentOptions;
     return Object.values(parentNameMap);
   }, [parentOptions, parentNameMap]);
 
-  if (!rows.length) {
+  if (!localRows.length) {
     return (
       <Card className="p-6 text-sm text-muted-foreground">No tasks yet.</Card>
     );
@@ -62,23 +73,54 @@ export function TasksBrowser({
 
       {view === "list" ? (
         <TaskList
-          rows={rows}
-          parentNameMap={parentNameMap}
+          rows={localRows}
+          parentNameMap={localParentNameMap}
           currentUserId={currentUserId}
-          onRowClick={(t) =>
-            setActive({
-              ...t,
+          onRowClick={(t) => {
+            const details: TaskDetails = {
+              id: t.id,
+              name: t.name,
+              description: t.description ?? null,
+              status: t.status,
+              priority: t.priority,
+              progress: typeof t.progress === "number" ? t.progress : null,
+              start_date: t.start_date ?? null,
+              end_date: t.end_date ?? null,
+              deadline: t.deadline ?? null,
+              link: t.link ?? null,
+              parent_id: t.parent_id ?? undefined,
+              created_at: t.created_at,
               assignees: t.assignees ?? [],
-            })
-          }
+              ...(typeof t.col_id === "string" ? { col_id: t.col_id } : {}),
+            };
+            setActive(details);
+          }}
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
-          {rows.map((t) => (
+          {localRows.map((t) => (
             <Card
               key={t.id}
               className="p-4 cursor-pointer"
-              onClick={() => setActive({ ...t, assignees: t.assignees ?? [] })}
+              onClick={() => {
+                const details: TaskDetails = {
+                  id: t.id,
+                  name: t.name,
+                  description: t.description ?? null,
+                  status: t.status,
+                  priority: t.priority,
+                  progress: typeof t.progress === "number" ? t.progress : null,
+                  start_date: t.start_date ?? null,
+                  end_date: t.end_date ?? null,
+                  deadline: t.deadline ?? null,
+                  link: t.link ?? null,
+                  parent_id: t.parent_id ?? undefined,
+                  created_at: t.created_at,
+                  assignees: t.assignees ?? [],
+                  ...(typeof t.col_id === "string" ? { col_id: t.col_id } : {}),
+                };
+                setActive(details);
+              }}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -103,9 +145,9 @@ export function TasksBrowser({
                         Due {new Date(t.deadline).toLocaleDateString()}
                       </span>
                     ) : null}
-                    {t.parent_id && parentNameMap[t.parent_id] ? (
+                    {t.parent_id && localParentNameMap[t.parent_id] ? (
                       <span className="text-muted-foreground">
-                        Parent: {parentNameMap[t.parent_id].name}
+                        Parent: {localParentNameMap[t.parent_id].name}
                       </span>
                     ) : null}
                   </div>
@@ -166,8 +208,36 @@ export function TasksBrowser({
         parentOptions={composedParents}
         assigneeOptions={assigneeOptions}
         onSaved={(updated) => {
-          // optimistic update in local rows is owned by parent; here we just close
-          setActive(updated);
+          // Update local list so changes are visible immediately
+          setLocalRows((prev) =>
+            prev.map((x) =>
+              x.id === updated.id
+                ? {
+                    ...x,
+                    name: updated.name,
+                    description: updated.description ?? undefined,
+                    status: updated.status,
+                    priority: updated.priority,
+                    progress:
+                      typeof updated.progress === "number"
+                        ? updated.progress
+                        : undefined,
+                    start_date: updated.start_date ?? undefined,
+                    end_date: updated.end_date ?? undefined,
+                    deadline: updated.deadline ?? undefined,
+                    link: updated.link ?? undefined,
+                    parent_id: updated.parent_id ?? undefined,
+                    col_id: updated.col_id ?? undefined,
+                    assignees: updated.assignees ?? [],
+                  }
+                : x
+            )
+          );
+          // If the edited task can be a parent for others and its name changed, update the parent map
+          setLocalParentNameMap((prev) => ({
+            ...prev,
+            [updated.id]: { id: updated.id, name: updated.name },
+          }));
           setActive(null);
         }}
       />

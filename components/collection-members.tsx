@@ -245,7 +245,7 @@ export function CollectionMembers({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="overflow-y-auto max-h-60">
+        <DialogContent className="max-h-full md:h-5/6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Invite to Collection</DialogTitle>
             <DialogDescription>

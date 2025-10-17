@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Filters } from "@/components/tasks-filters";
 import type { TaskListRow } from "@/components/task-list";
 import { TasksBrowser } from "@/components/tasks-browser";
+import AddTaskAnywhere from "@/components/add-task-anywhere";
 
 export type SearchParams = {
   q?: string;
@@ -75,7 +76,7 @@ export default async function AllTasksPage({
     user_tasks?: { user_id: string }[]; // when joined
   };
 
-  // Base select (use parent_task_id)
+  // Base select (use parent_task_id). Include personal tasks (col_id is null) created by user
   let query = supabase
     .from("tasks")
     .select(
@@ -93,9 +94,15 @@ export default async function AllTasksPage({
         "parent_task_id",
         "created_at",
         "col_id",
+        "created_by",
       ].join(", ")
     )
-    .in("col_id", collectionIds)
+    .or(
+      [
+        `col_id.in.(${collectionIds.join(",")})`,
+        `and(col_id.is.null,created_by.eq.${user.id})`,
+      ].join(",")
+    )
     .order("created_at", { ascending: false });
 
   if (sp.status) query = query.eq("status", sp.status);
@@ -207,6 +214,7 @@ export default async function AllTasksPage({
     link: t.link ?? undefined,
     created_at: t.created_at,
     parent_id: t.parent_task_id ?? undefined, // ✓ alias for UI components
+    col_id: t.col_id ?? undefined,
     assignees: assigneeMap[t.id] ?? [],
   }));
 
@@ -266,6 +274,14 @@ export default async function AllTasksPage({
         title="All Tasks"
         description="Browse everything across the collections you can access."
       />
+
+      <div className="flex justify-end">
+        <AddTaskAnywhere
+          collections={[...collections.values()]}
+          currentUserId={user.id}
+          assigneeOptions={assigneeOptions}
+        />
+      </div>
 
       <Filters
         collections={[...collections.values()]}

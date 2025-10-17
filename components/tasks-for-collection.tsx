@@ -380,12 +380,25 @@ export function TasksForCollection({
           rows={composedListRows}
           parentNameMap={parentNameMap}
           currentUserId={userId}
-          onRowClick={(t) =>
-            setActive({
-              ...t,
+          onRowClick={(t) => {
+            const details: TaskDetails = {
+              id: t.id,
+              name: t.name,
+              description: t.description ?? null,
+              status: t.status,
+              priority: t.priority,
+              progress: typeof t.progress === "number" ? t.progress : null,
+              start_date: t.start_date ?? null,
+              end_date: t.end_date ?? null,
+              deadline: t.deadline ?? null,
+              link: t.link ?? null,
+              parent_id: t.parent_id ?? undefined,
+              created_at: t.created_at,
               assignees: assigneesCache[t.id] ?? [],
-            })
-          }
+              ...(typeof t.col_id === "string" ? { col_id: t.col_id } : {}),
+            };
+            setActive(details);
+          }}
         />
       ) : // Simple board-style cards (existing minimal version)
       filtered.length === 0 ? (
@@ -396,12 +409,24 @@ export function TasksForCollection({
             <Card
               key={t.id}
               className="p-4 cursor-pointer"
-              onClick={() =>
-                setActive({
-                  ...t,
+              onClick={() => {
+                const details: TaskDetails = {
+                  id: t.id,
+                  name: t.name,
+                  description: t.description ?? null,
+                  status: t.status,
+                  priority: t.priority,
+                  progress: typeof t.progress === "number" ? t.progress : null,
+                  start_date: t.start_date ?? null,
+                  end_date: t.end_date ?? null,
+                  deadline: t.deadline ?? null,
+                  link: t.link ?? null,
+                  parent_id: t.parent_id ?? undefined,
+                  created_at: t.created_at,
                   assignees: assigneesCache[t.id] ?? [],
-                })
-              }
+                };
+                setActive(details);
+              }}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -520,7 +545,7 @@ export function TasksForCollection({
           if (!v) resetForm();
         }}
       >
-        <DialogContent className="max-w-2xl max-h-60 overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-full md:h-5/6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Task</DialogTitle>
             <DialogDescription>

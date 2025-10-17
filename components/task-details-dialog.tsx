@@ -40,6 +40,7 @@ export function TaskDetailsDialog({
   parentOptions,
   assigneeOptions,
   onSaved,
+  collections,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -47,6 +48,7 @@ export function TaskDetailsDialog({
   parentOptions: Array<{ id: string; name: string }>;
   assigneeOptions: Array<{ id: string; label: string }>;
   onSaved?: (updated: TaskDetails) => void;
+  collections?: Array<{ id: string; title: string }>;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -62,6 +64,13 @@ export function TaskDetailsDialog({
   const [link, setLink] = useState<string>("");
   const [parentId, setParentId] = useState<string>("");
   const [assignees, setAssignees] = useState<string[]>([]);
+  const [colId, setColId] = useState<string>("");
+  const [parentOpts, setParentOpts] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [collectionsList, setCollectionsList] = useState<
+    Array<{ id: string; title: string }>
+  >([]);
 
   useEffect(() => {
     if (!task) return;
@@ -76,7 +85,64 @@ export function TaskDetailsDialog({
     setLink(task.link ?? "");
     setParentId(task.parent_id ?? "");
     setAssignees((task.assignees ?? []).map((a) => a.id));
-  }, [task]);
+    setColId(task.col_id ?? "");
+    // initialize parent options from prop initially
+    setParentOpts(parentOptions);
+  }, [task, parentOptions]);
+
+  // Load accessible collections (owned + member) if not provided
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (collections && collections.length) {
+        if (!cancelled) setCollectionsList(collections);
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const map = new Map<string, { id: string; title: string }>();
+      type CollectionRow = { id: string; title: string };
+      type UserCollectionRow = { col_id: string };
+
+      const owned = await supabase
+        .from("collections")
+        .select("id, title")
+        .eq("created_by", user.id)
+        .limit(200);
+      ((owned.data ?? []) as CollectionRow[]).forEach((r) =>
+        map.set(r.id, { id: r.id, title: r.title })
+      );
+
+      const member = await supabase
+        .from("user_collections")
+        .select("col_id")
+        .eq("user_id", user.id)
+        .limit(400);
+      const memberRows = (member.data ?? []) as UserCollectionRow[];
+      const ids = Array.from(
+        new Set(memberRows.map((r) => r.col_id).filter(Boolean))
+      )
+        .filter((id): id is string => typeof id === "string")
+        .filter((id) => !map.has(id));
+      if (ids.length) {
+        const details = await supabase
+          .from("collections")
+          .select("id, title")
+          .in("id", ids);
+        ((details.data ?? []) as CollectionRow[]).forEach((r) =>
+          map.set(r.id, { id: r.id, title: r.title })
+        );
+      }
+      if (!cancelled) setCollectionsList(Array.from(map.values()));
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [collections, supabase]);
 
   function isoToDateInput(v: string) {
     // Return yyyy-mm-dd portion
@@ -103,7 +169,7 @@ export function TaskDetailsDialog({
 
     const { error: updErr } = await supabase
       .from("tasks")
-      .update(updateBody)
+      .update({ ...updateBody, col_id: colId || null })
       .eq("id", task.id);
 
     if (updErr) {
@@ -155,6 +221,7 @@ export function TaskDetailsDialog({
       deadline: updateBody.deadline,
       link: updateBody.link,
       parent_id: updateBody.parent_task_id ?? undefined,
+      col_id: colId || undefined,
       assignees: assignees.map((id) => {
         const found = assigneeOptions.find((o) => o.id === id);
         return found ? { id: found.id, label: found.label } : { id, label: id };
@@ -168,7 +235,7 @@ export function TaskDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-80 overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-full md:h-5/6 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Task</DialogTitle>
           <DialogDescription>
@@ -178,6 +245,44 @@ export function TaskDetailsDialog({
 
         {!task ? null : (
           <div className="grid gap-3 sm:grid-cols-2">
+            {/* Collection selection (optional) */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="collection">Collection</Label>
+              <select
+                id="collection"
+                value={colId}
+                onChange={async (e) => {
+                  const v = e.target.value;
+                  setColId(v);
+                  // Clear parent when changing collection
+                  setParentId("");
+                  if (!v) {
+                    setParentOpts([]);
+                    return;
+                  }
+                  const { data } = await supabase
+                    .from("tasks")
+                    .select("id, name")
+                    .eq("col_id", v)
+                    .order("created_at", { ascending: false })
+                    .limit(500);
+                  setParentOpts(
+                    (data ?? []) as Array<{ id: string; name: string }>
+                  );
+                }}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">— None —</option>
+                {collectionsList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Move this task to a collection or keep it personal.
+              </p>
+            </div>
             <div className="sm:col-span-2 space-y-2">
               <Label htmlFor="task-name">Name</Label>
               <Input
@@ -229,14 +334,25 @@ export function TaskDetailsDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="progress">Progress (%)</Label>
-              <Input
+              <Label htmlFor="progress">Progress</Label>
+              <input
                 id="progress"
-                type="number"
+                type="range"
                 min={0}
                 max={100}
                 value={progress}
-                onChange={(e) => setProgress(Number(e.target.value))}
+                onChange={(e) => setProgress(parseInt(e.target.value, 10))}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">{progress}%</div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="link">Link</Label>
+              <Input
+                id="link"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://..."
               />
             </div>
 
@@ -268,16 +384,6 @@ export function TaskDetailsDialog({
               />
             </div>
 
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="link">Link</Label>
-              <Input
-                id="link"
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="parent">Parent task</Label>
               <select
@@ -285,9 +391,10 @@ export function TaskDetailsDialog({
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 value={parentId}
                 onChange={(e) => setParentId(e.target.value)}
+                disabled={!colId}
               >
                 <option value="">— None —</option>
-                {parentOptions.map((p) => (
+                {parentOpts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -297,17 +404,16 @@ export function TaskDetailsDialog({
 
             <div className="space-y-2 sm:col-span-2">
               <Label>Assignees</Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {assigneeOptions.map((opt) => {
                   const checked = assignees.includes(opt.id);
                   return (
                     <label
                       key={opt.id}
-                      className="flex items-center gap-2 text-sm"
+                      className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm"
                     >
                       <input
                         type="checkbox"
-                        className="h-4 w-4"
                         checked={checked}
                         onChange={(e) => {
                           setAssignees((prev) =>
@@ -317,22 +423,27 @@ export function TaskDetailsDialog({
                           );
                         }}
                       />
-                      <span>{opt.label}</span>
+                      <span className="truncate">{opt.label}</span>
                     </label>
                   );
                 })}
               </div>
             </div>
 
-            <div className="sm:col-span-2 flex items-center justify-end gap-2 pt-2">
+            <div className="sm:col-span-2 flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
               <Button
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={saving}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving}>
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full sm:w-auto"
+              >
                 {saving ? "Saving…" : "Save changes"}
               </Button>
             </div>
