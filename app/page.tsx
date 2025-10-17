@@ -108,7 +108,7 @@ export default function HomePage() {
               Create an account to sync across devices and unlock reminders.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex md:gap-3 gap-1">
             <Button asChild>
               <Link href="/auth/sign-up">Create account</Link>
             </Button>
