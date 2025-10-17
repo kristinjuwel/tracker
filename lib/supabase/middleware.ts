@@ -66,7 +66,7 @@ export async function updateSession(request: NextRequest) {
   // Redirect logged-in users from home page to protected page
   if (pathname === "/" && user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/tracker";
+    url.pathname = "/collections";
     return NextResponse.redirect(url);
   }
 

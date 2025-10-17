@@ -2,13 +2,12 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
 import "./globals.css";
 import { AuthButton } from "@/components/auth-button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { DashboardTabs } from "@/components/dashboard-tabs";
-
-// ...
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -58,15 +57,17 @@ export default function RootLayout({
             </div>
           </header>
 
-          {/* Page Content */}
-          <main className="mx-auto max-w-6xl px-4">{children}</main>
+          {/* Page Content with spacing */}
+          <main className="mx-auto max-w-6xl px-4 my-10">{children}</main>
 
-          {/* Footer */}
-          <footer className="border-t">
+          {/* Footer with top margin for breathing room */}
+          <footer className="border-t mt-10">
             <div className="mx-auto max-w-6xl px-4 py-6 text-xs text-muted-foreground">
               © 2025 Tracker · Built with Next.js & Supabase
             </div>
           </footer>
+          {/* Global toaster for app-wide notifications */}
+          <Toaster richColors closeButton position="top-right" />
         </ThemeProvider>
       </body>
     </html>

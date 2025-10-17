@@ -46,7 +46,7 @@ export function SignUpForm({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/tracker`,
+          emailRedirectTo: `${window.location.origin}/collections`,
           data: {
             first_name: firstName,
             last_name: lastName,

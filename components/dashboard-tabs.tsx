@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils"; // or your own cx helper
 
 const links = [
-  { href: "/", label: "Collections" }, // this resolves to /(dashboard)/page.tsx
+  { href: "/collections", label: "Collections" }, // this resolves to /(dashboard)/page.tsx
   { href: "/tasks", label: "Tasks" },
   { href: "/calendar", label: "Calendar" },
   { href: "/settings", label: "Settings" },

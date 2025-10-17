@@ -14,7 +14,10 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { CollectionCard } from "./collection-card";
 import { List, Grid2x2 } from "lucide-react";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 import Image from "next/image";
+import Link from "next/link";
 
 type Collection = {
   id: string;
@@ -138,16 +141,17 @@ export function CollectionsClient({
 
       if (error || !data) {
         setCollections((s) => s.filter((c) => c.id !== optimistic.id));
-        alert("Failed to create collection");
+        toast.error("Failed to create collection");
       } else {
         setCollections((s) => [
           data,
           ...s.filter((c) => c.id !== optimistic.id),
         ]);
+        toast.success("Collection created");
       }
     } catch (err) {
       setCollections((s) => s.filter((c) => c.id !== optimistic.id));
-      alert((err as Error).message || "Failed to create collection");
+      toast.error((err as Error).message || "Failed to create collection");
     } finally {
       setSaving(false);
       setOpen(false);
@@ -208,11 +212,12 @@ export function CollectionsClient({
       ) : (
         <div className="divide-y rounded-xl border">
           {filtered.map((c) => {
-            const href = `/tracker/tasks?collection=${c.id}`;
+            const href = `/tasks?collection=${c.id}`;
             return (
-              <div
+              <Link
                 key={c.id}
-                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
+                href={href}
+                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-xl hover:bg-muted/40 transition"
               >
                 {/* left */}
                 <div className="flex items-center gap-2">
@@ -232,12 +237,9 @@ export function CollectionsClient({
                     )
                   ) : null}
                   <div>
-                    <a
-                      href={href}
-                      className="font-semibold break-words hover:underline"
-                    >
+                    <span className="font-semibold break-words hover:underline">
                       {c.title}
-                    </a>
+                    </span>
                     {c.description ? (
                       <p className="mt-1 text-sm text-muted-foreground break-words">
                         {c.description}
@@ -249,7 +251,7 @@ export function CollectionsClient({
                 <div className="text-xs text-muted-foreground sm:text-right">
                   {new Date(c.created_at).toLocaleDateString()}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -257,7 +259,7 @@ export function CollectionsClient({
 
       {/* Add dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-full md:h-5/6 overflow-y-auto">
           <DialogHeader>
             <DialogTitle>New Collection</DialogTitle>
             <DialogDescription>
@@ -343,7 +345,14 @@ export function CollectionsClient({
               disabled={saving || !title.trim()}
               className="w-full sm:w-auto"
             >
-              {saving ? "Creating..." : "Create"}
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Creating...
+                </span>
+              ) : (
+                "Create"
+              )}
             </Button>
           </div>
         </DialogContent>

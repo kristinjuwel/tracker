@@ -45,7 +45,7 @@ function IconRender({ image, alt }: { image: string | null; alt: string }) {
 
 export function CollectionCard({ collection }: Props) {
   // Route to the collection's task page
-  const href = `/tracker/tasks?collection=${collection.id}`;
+  const href = `/tasks?collection=${collection.id}`;
 
   return (
     <Link
