@@ -1,98 +1,167 @@
-# Tracker App
+# 🧭 Tracker App
 
-A full‑stack task tracker built with Next.js (App Router) + TypeScript + Supabase (Postgres + Auth), featuring collections, tasks, tags, assignees, comments, reminders with cron emails, and role-based access.
+A **full-stack collaborative task tracker** built with **Next.js (App Router) + TypeScript + Supabase**, featuring collections, tasks, assignees, reminders with scheduled emails, and fine-grained role-based access control.
 
-## Tech stack
+---
 
-- Next.js App Router (TypeScript, RSC, Route Handlers)
-- Supabase (Postgres, Auth, RLS)
-- shadcn/ui + TailwindCSS
-- Resend (optional) for reminder emails
+## 📸 Project Overview
 
-## Features
+Tracker helps teams organize work into **collections**, manage **tasks**, assign **members**, track **progress**, and set reminders — all stored securely under Supabase Row Level Security (RLS).
 
-- Auth flows: sign up, login, logout, forgot/update password.
-- Collections and membership with roles (owner/editor/viewer).
-- Tasks with status, priority, dates, parent tasks, attachments (image URL), and links.
-- Many‑to‑many: task assignees, task tags; collection members.
-- Comments on tasks.
-- Task dependencies.
-- Reminders with scheduled email sending.
-- Protected pages and APIs via Supabase session and RLS.
+### Demo / Screenshots
+<img width="1615" height="914" alt="image" src="https://github.com/user-attachments/assets/7beb5823-981a-4ff1-aec4-f183ccd140fd" />
+<img width="1569" height="906" alt="image" src="https://github.com/user-attachments/assets/a5821ae6-4335-41d8-8108-17e99b2bb3b9" />
+<img width="1337" height="682" alt="image" src="https://github.com/user-attachments/assets/8c6f2162-f58f-4569-a8bc-d3d6550c07c6" />
+<img width="1211" height="577" alt="image" src="https://github.com/user-attachments/assets/8612c25e-00ae-44fa-b369-a765d17e68e9" />
+<img width="1187" height="659" alt="image" src="https://github.com/user-attachments/assets/5229212a-5933-4c5a-90cc-15ef465cffb2" />
 
-## Repository map (key files)
 
-- API routes:
-  - Tasks: [app/api/tasks/route.ts](app/api/tasks/route.ts), [app/api/tasks/[id]/route.ts](app/api/tasks/%5Bid%5D/route.ts)
-  - Collections: [app/api/collections/route.ts](app/api/collections/route.ts), [app/api/collections/[id]/route.ts](app/api/collections/%5Bid%5D/route.ts), members: [app/api/collections/members/route.ts](app/api/collections/members/route.ts), [app/api/collections/members/[userId]/route.ts](app/api/collections/members/%5BuserId%5D/route.ts)
-  - Tags: [app/api/tags/route.ts](app/api/tags/route.ts), task↔tags: [app/api/tasks/tags/route.ts](app/api/tasks/tags/route.ts), [app/api/tasks/tags/[tagId]/route.ts](app/api/tasks/tags/%5BtagId%5D/route.ts)
-  - Assignees: [app/api/tasks/assignees/route.ts](app/api/tasks/assignees/route.ts), [app/api/tasks/assignees/[userId]/route.ts](app/api/tasks/assignees/%5BuserId%5D/route.ts)
-  - Comments: [app/api/tasks/comments/route.ts](app/api/tasks/comments/route.ts), [app/api/tasks/comments/[commentId]/route.ts](app/api/tasks/comments/%5BcommentId%5D/route.ts)
-  - Dependencies: [app/api/tasks/dependencies/route.ts](app/api/tasks/dependencies/route.ts), [app/api/tasks/dependencies/[depId]/route.ts](app/api/tasks/dependencies/%5BdepId%5D/route.ts)
-  - Reminders: [app/api/tasks/reminders/route.ts](app/api/tasks/reminders/route.ts), [app/api/cron/send-reminders/route.ts](app/api/cron/send-reminders/route.ts)
-  - Profiles: [app/api/profiles/me/route.ts](app/api/profiles/me/route.ts)
-- Supabase helpers:
-  - Server/client/admin: [lib/supabase/server.ts](lib/supabase/server.ts), [lib/supabase/client.ts](lib/supabase/client.ts), [lib/supabase/admin.ts](lib/supabase/admin.ts)
-- UI:
-  - Task editor: [components/task-details-dialog.tsx](components/task-details-dialog.tsx)
-  - Collection members: [components/collection-members.tsx](components/collection-members.tsx)
-  - Tasks pages: [app/(dashboard)/tasks/page.tsx](<app/(dashboard)/tasks/page.tsx>), [app/(dashboard)/collections/[id]/page.tsx](<app/(dashboard)/collections/%5Bid%5D/page.tsx>)
+### Key Highlights
 
-## Local setup
+* **Role-based access** for collections (owner, editor, viewer)
+* **Task dependencies, tags, and reminders**
+* **Auth flows:** signup, login, password reset, magic link
+* **Responsive dashboard** built with shadcn/ui and TailwindCSS
+* **Secure RLS policies** enforce access at the database layer
 
-1. Prereqs
+---
 
-- Node 18+
-- Supabase project (get URL and anon/service keys)
+## 🧩 Data Model
 
-2. Env vars
+### Entity Relationship Diagram
 
-- Copy `.env.development.example` to `.env.local` and fill values.
-- Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Reminders/cron (optional): `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `REMINDER_WINDOW_MS` (defaults to 60000 ms)
+<img width="1281" height="667" alt="image" src="https://github.com/user-attachments/assets/59e6639f-6657-40df-bdd9-ac2eb34ec2a9" />
 
-3. Database schema and RLS
 
-- Open Supabase SQL Editor and run the SQL in supabase/migrations/0001_schema.sql (provided below in this README).
-- This creates tables, relationships, RLS policies, and triggers (auto-create profile and auto-assign collection owner).
+---
 
-4. Install and run
+## ⚙️ Local Setup Guide
 
-```powershell
-# from repo root
+### 1. Requirements
+
+* **Node.js 18+**
+* **Supabase project** (free tier works fine)
+
+### 2. Environment Variables
+
+Copy the example file and configure:
+
+```bash
+cp .env.development.example .env.local
+```
+
+| Variable                                       | Description                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`                     | Supabase project URL (from your project settings)            |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`                | Supabase public anon key (used by client)                    |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY` | Optional alias for frameworks needing explicit naming        |
+| `SUPABASE_URL`                                 | Supabase project URL (server-side)                           |
+| `SUPABASE_ANON_KEY`                            | Supabase anon key (server-side)                              |
+| `SUPABASE_SERVICE_ROLE_KEY`                    | Supabase service role key (⚠️ keep secret — server use only) |
+| `SUPABASE_JWT_SECRET`                          | JWT signing secret (used for server auth verification)       |
+
+
+| Variable                   | Description                           |
+| -------------------------- | ------------------------------------- |
+| `POSTGRES_URL`             | Main connection string (pooled)       |
+| `POSTGRES_PRISMA_URL`      | Prisma connection string (non-pooled) |
+| `POSTGRES_URL_NON_POOLING` | Non-pooled fallback connection string |
+| `POSTGRES_DATABASE`        | Database name                         |
+| `POSTGRES_HOST`            | Database host                         |
+| `POSTGRES_USER`            | Database username                     |
+| `POSTGRES_PASSWORD`        | Database password                     |
+
+### 3. Database Setup / Migration
+
+1. Go to **Supabase SQL Editor**
+2. Run the schema in [`supabase/migrations/0001_schema.sql`]([supabase/migrations/0001_schema.sql](https://drive.google.com/file/d/1QhYC5aReD7zVVXRGQXMpuzUYaemLHhD-/view?usp=sharing))
+
+   * Creates tables, enums, triggers, and RLS policies
+   * Automatically adds the creator as the **collection owner**
+
+### 4. Run the App
+
+```bash
 npm install
 npm run dev
 ```
 
-App runs at http://localhost:3000
+App runs on **[http://localhost:3000](http://localhost:3000)**
 
-## Reminders cron
+---
 
-- Endpoint: POST /api/cron/send-reminders
-- Header: x-cron-secret: $CRON_SECRET
-- Schedules: every minute
-- Email provider: Resend (optional). Set `RESEND_API_KEY` and `EMAIL_FROM`.
+## 🧱 Feature Mapping
 
-Example trigger:
+| Requirement              | Implemented Feature                                              |
+| ------------------------ | ---------------------------------------------------------------- |
+| Authentication           | Supabase Auth (signup, login, forgot password, magic link)       |
+| Collections & Membership | `collections`, `user_collections` with owner/editor/viewer roles |
+| Tasks CRUD               | Full task lifecycle with status, priority, dates, parent task    |
+| Task Relations           | Dependencies, tags, and user assignments                         |
+| Reminders                | Scheduled email reminders via `/api/cron/send-reminders`         |
+| Security                 | Supabase Row Level Security + Next.js middleware                 |
+| UI/UX                    | shadcn/ui components + Tailwind responsive design                |
+| Deployment               | Ready for Vercel (environment variables supported)               |
+
+---
+
+## 🧠 Access Control Notes (RLS)
+
+**Row Level Security (RLS)** is enforced directly in Supabase Postgres.
+
+| Table                | RLS Policy Summary                                         |
+| -------------------- | ---------------------------------------------------------- |
+| **profiles**         | Everyone can read; users can update their own profile      |
+| **collections**      | Visible to members and creator; creator = auto owner       |
+| **user_collections** | Only owners can manage membership                          |
+| **tasks**            | Readable by collection members; writable by editors/owners |
+| **reminders**        | Readable by members; created by author or editor           |
+
+All queries in Next.js use the Supabase client authenticated by session, ensuring the database enforces access automatically.
+
+---
+
+## 📬 Cron Reminder Endpoint
+
+**Endpoint:** `POST /api/cron/send-reminders`
+**Header:** `x-cron-secret: $CRON_SECRET`
+
+Runs every minute to check upcoming reminders and send via **Resend**.
+
+Example manual trigger:
 
 ```powershell
 $headers = @{ "x-cron-secret" = "$env:CRON_SECRET" }
 Invoke-WebRequest -Uri "http://localhost:3000/api/cron/send-reminders" -Method POST -Headers $headers
 ```
 
-See [README-reminders.md](README-reminders.md) for extra details.
+See [`README-reminders.md`](README-reminders.md) for details.
 
-## RLS overview
+---
 
-- Profiles: users can update their own profile; all authenticated users can read profiles (used for member lists and email routing).
-- Collections: visible to members and creator. Creator is auto-added as owner via trigger.
-- Tasks, comments, tags, assignees, dependencies, reminders: readable by collection members; updates are limited by membership role or authorship (comments/reminders).
+## 🧑‍💻 AI Tools Used
 
-## Types (optional)
+This project was built and documented with the help of the following **AI tools & MCPs**:
 
-Generate types from Supabase:
+| Tool / Product              | Purpose                                                                  |
+| --------------------------- | ------------------------------------------------------------------------ |
+| **ChatGPT (GPT-5)**         | Code architecture design, Supabase SQL generation, documentation writing |
+| **GitHub Copilot**          | Auto-completion for repetitive UI logic (shadcn/ui components)           |
 
-```bash
-# Using the Supabase CLI (if installed)
-supabase gen types typescript --project-id <project-ref> --schema public > types/database.types.ts
-```
+---
+
+## 🚀 Deployment Notes
+
+* Recommended: **Vercel + Supabase**
+* Add all `.env.local` variables to Vercel → Project → Settings → Environment Variables
+* In **Supabase Auth → URL Configuration**, whitelist:
+
+  ```
+[  https://tracker-iota-seven.vercel.app
+](https://tracker-iota-seven.vercel.app/)  
+http://localhost:3000
+  ```
+* Enable email templates (signup, invite, magic link) for branding consistency.
+
+---
+
